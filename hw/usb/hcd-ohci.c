@@ -32,6 +32,8 @@
 #include "hw/pci.h"
 #include "hw/sysbus.h"
 #include "hw/qdev-addr.h"
+#include "trace.h"
+#include "trace/mtrace.h"
 
 //#define DEBUG_OHCI
 /* Dump packet contents.  */
@@ -113,6 +115,7 @@ typedef struct {
     uint32_t async_td;
     int async_complete;
 
+	int mtrace_id;
 } OHCIState;
 
 /* Host Controller Communications Area */
@@ -307,6 +310,41 @@ struct ohci_iso_td {
 
 #define OHCI_HRESET_FSBIR       (1 << 0)
 
+#if defined(CONFIG_TRACE_MEMORY)
+struct ohci_mtrace_data {
+	int type;	/* ED, TD */
+	uint32_t head_paddr;
+};
+
+static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
+									uint32_t paddr, uint32_t size)
+{
+}
+
+static void ohci_mtrace_callback_del(struct mtrace_reg *reg)
+{
+	g_free(reg->opaque);
+}
+
+static void ohci_mtrace_ctrl_rescan(OHCIState *ohci, uint32_t ctrl_head)
+{
+	/* TODO: rescan all ctrl ed list */
+	struct mtrace_reg *reg;
+	struct ohci_mtrace_data *data;
+ 	
+	reg =  g_malloc0(sizeof(*reg));
+	data = g_malloc0(sizeof(*data));
+
+	reg->paddr = ctrl_head;
+	reg->size = sizeof(ctrl_head);
+	reg->opaque = data;
+	reg->hook_callback = ohci_mtrace_callback_hook;
+	reg->del_callback = ohci_mtrace_callback_del;
+
+	mtrace_add_filter(ohci->mtrace_id, reg);
+}
+#endif
+
 /* Update IRQ levels */
 static inline void ohci_intr_update(OHCIState *ohci)
 {
@@ -317,12 +355,14 @@ static inline void ohci_intr_update(OHCIState *ohci)
         level = 1;
 
     qemu_set_irq(ohci->irq, level);
+	trace_ohci_intr_update(ohci);
 }
 
 /* Set an interrupt */
 static inline void ohci_set_interrupt(OHCIState *ohci, uint32_t intr)
 {
     ohci->intr_status |= intr;
+	trace_ohci_set_interrupt(ohci, intr);
     ohci_intr_update(ohci);
 }
 
@@ -333,6 +373,7 @@ static void ohci_attach(USBPort *port1)
     OHCIPort *port = &s->rhport[port1->index];
     uint32_t old_state = port->ctrl;
 
+	trace_ohci_attach(port1);
     /* set connect status */
     port->ctrl |= OHCI_PORT_CCS | OHCI_PORT_CSC;
 
@@ -402,6 +443,7 @@ static void ohci_wakeup(USBPort *port1)
          */
         intr = OHCI_INTR_RD;
     }
+	trace_ohci_wakeup(port1);
     ohci_set_interrupt(s, intr);
 }
 
@@ -465,6 +507,7 @@ static void ohci_reset(void *opaque)
     ohci->rhdesc_b = 0x0; /* Impl. specific */
     ohci->rhstatus = 0;
 
+	trace_ohci_reset(opaque);
     for (i = 0; i < ohci->num_ports; i++)
       {
         port = &ohci->rhport[i];
@@ -547,18 +590,21 @@ static inline int put_words(OHCIState *ohci,
 static inline int ohci_read_ed(OHCIState *ohci,
                                uint32_t addr, struct ohci_ed *ed)
 {
+	trace_ohci_read_ed(ohci, addr, ed);
     return get_dwords(ohci, addr, (uint32_t *)ed, sizeof(*ed) >> 2);
 }
 
 static inline int ohci_read_td(OHCIState *ohci,
                                uint32_t addr, struct ohci_td *td)
 {
+	trace_ohci_read_td(ohci, addr, td);
     return get_dwords(ohci, addr, (uint32_t *)td, sizeof(*td) >> 2);
 }
 
 static inline int ohci_read_iso_td(OHCIState *ohci,
                                    uint32_t addr, struct ohci_iso_td *td)
 {
+	trace_ohci_read_iso_td(ohci, addr, td);
     return (get_dwords(ohci, addr, (uint32_t *)td, 4) &&
             get_words(ohci, addr + 16, td->offset, 8));
 }
@@ -566,6 +612,7 @@ static inline int ohci_read_iso_td(OHCIState *ohci,
 static inline int ohci_read_hcca(OHCIState *ohci,
                                  uint32_t addr, struct ohci_hcca *hcca)
 {
+	trace_ohci_read_hcca(ohci, addr, hcca);
     cpu_physical_memory_read(addr + ohci->localmem_base, hcca, sizeof(*hcca));
     return 1;
 }
@@ -577,6 +624,7 @@ static inline int ohci_put_ed(OHCIState *ohci,
      * Since just ed->head is changed by HC, just write back this
      */
 
+	trace_ohci_put_ed(ohci, addr, ed);
     return put_dwords(ohci, addr + ED_WBACK_OFFSET,
                       (uint32_t *)((char *)ed + ED_WBACK_OFFSET),
                       ED_WBACK_SIZE >> 2);
@@ -1652,9 +1700,13 @@ static void ohci_mem_write(void *opaque,
         break;
 
     case 8: /* HcControlHeadED */
-        ohci->ctrl_head = val & OHCI_EDPTR_MASK;
+	{
+		/* TODO: rescan all */
+		uint32_t v = val & OHCI_EDPTR_MASK;
+		ohci_mtrace_ctrl_rescan(ohci, v);
+        ohci->ctrl_head = v;
         break;
-
+	}
     case 9: /* HcControlCurrentED */
         ohci->ctrl_cur = val & OHCI_EDPTR_MASK;
         break;
@@ -1843,6 +1895,8 @@ static int ohci_init_pxa(SysBusDevice *dev)
     sysbus_init_irq(dev, &s->ohci.irq);
     sysbus_init_mmio(dev, &s->ohci.mem);
 
+	/* TODO: read typeinfo's name */
+	s->ohci.mtrace_id = mtrace_register_dev("sysbus-ohci", 1);
     return 0;
 }
 
