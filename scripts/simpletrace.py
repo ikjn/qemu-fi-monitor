@@ -37,6 +37,8 @@ def parse_events(fobj):
             continue
 
         disable, name, args = m.groups()
+        if disable is not None:
+			continue
         events[event_num] = (name,) + get_argnames(args)
         event_num += 1
     return events
