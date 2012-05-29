@@ -1,0 +1,218 @@
+Changelog for qemu-linaro
+=========================
+
+Note that this changelog only covers ARM-related changes
+since the previous qemu-linaro release; since we track
+upstream fairly closely there will be various upstream
+changes which we incorporate but which are not listed
+here. For full change detail consult the git history:
+
+ http://git.linaro.org/gitweb?p=qemu/qemu-linaro.git;a=summary
+
+Bug numbers refer to Launchpad qemu-linaro bugs, eg:
+https://bugs.launchpad.net/qemu-linaro/+bug/703094
+
+version 2012.05:
+ - Fixes #978694: Beagle bootrom emulation now correctly handles
+   FAT12/FAT16 images (thanks to Peter Chubb for the bug report
+   and patch).
+ - We now support running ARM BE8 userspace binaries (ie
+   byte-invariant big-endian data and little-endian code).
+
+version 2012.04:
+ - Fixes #928432: compiling spice support for i386 should
+   no longer give compile warnings/errors.
+ - Fixes #953544: 'SETEND' in Thumb mode should now UNDEF,
+   in line with the behaviour for the ARM encoding.
+ - Fixes #956799: add support for the ppoll syscall for
+   ARM linux-user emulation.
+ - Fixes #970252: add the OMAP36xx UART FIFO status registers
+   (thanks to Jan Vesely for the bug report and patch).
+
+version 2012.03:
+ - Fixes #932856: the OMAP3 boot rom emulation now tries
+   sector 256 in raw mode as well as sector 0.
+ - Fixes #931940: the PL031 RTC model now correctly raises
+   interrupts when the alarm timer expires.
+ - Fixes #928555: compiling on ARM systems with GLib 2.31
+   or better now works (we were previously failing due to
+   deprecation warnings on thread API functions).
+ - Fixes #885239: booting Linux on models using XScale CPUs
+   now works (a regression from upstream QEMU which has always
+   been present in qemu-linaro).
+ - Fixes #928432: compilation failures due to warnings in
+   Spice code on 32 bit hosts.
+ - Fixes #906922: we now default to enabling 'reserve memory
+   for guest' on 64 bit hosts in linux-user-mode. This
+   significantly reduces the chances of QEMU being unable to
+   satisfy a guest process mmap() request.
+ - Fixes #947888: the emulation of /proc/self/maps has been
+   improved. In particular the check for "%n in a format string
+   must be in a read-only area of memory" in the glibc in Ubuntu
+   Precise will now pass rather than always failing. (This was
+   causing some invocations of gpg to fail which in turn meant
+   using live-build to create Linaro images was failing.)
+   (Thanks to Alexander Graf of SuSE for these fixes.)
+ - QEMU's built-in boot loader now supports passing a device
+   tree blob to the kernel: if you boot with -kernel mykernel
+   (and optionally -initrd myinitrd) you can now also use the
+   new command line option -dtb my.dtb to pass a device tree.
+ - This version includes an initial implementation of a model
+   of the Samsung Exynos4210 SoC, used by board models 'nuri' and
+   'smdkc210' (thanks to Evgeny Voevodin, Maksim Kozlov, Igor
+   Mitsyanko and Dmitry Solodkiy from Samsung, who submitted this
+   work to upstream QEMU).
+ - This version includes an initial implementation of a model
+   of the Calxeda Highbank SoC, used by board model 'highbank'
+   (thanks to Rob Herring and Mark Langsdorf of Calxeda, who
+   submitted this work to upstream QEMU).
+
+version 2012.02:
+ - Fixes #926102: prctl(PR_SET_NAME, ...) not supported.  Fixes
+   usermode qemu running some perl scripts (as of perl 5.14).
+ - Fixes #913925: cpsie f instruction not reflected in FAULTMASK
+   (M profile)
+ - Simplified Cortex-A15 CPU definition, which can boot Linux.
+
+version 2012.01:
+ - Fixes #883133: we no longer assert on startup when running on
+   ARM systems with brk address space randomization enabled
+ - Fixes #870990: compiling on ARM systems for Thumb2 with
+   --enable-debug now works
+ - Fixes #903239: usermode emulation now includes support for
+   various previously missing *xattr syscalls
+ - Fixes #905697: trying to enable the prefetch engine in the
+   OMAP GPMC model might trigger an assertion failure
+ - We now have a (dummy) model of the L2x0/PL310 L2 cache
+   controller (thanks to Rob Herring and Mark Langsdorf)
+
+version 2011.12:
+ - There are no Linaro-specific changes of note in this release
+
+version 2011.11:
+ - The ARM vexpress-a9, versatilepb, versatileab and realview-*
+   boards now have audio support (thanks to Mathieu Sonet who
+   contributed a PL041 implementation upstream)
+ - Support for multiple instances of the "-sd" option on the
+   command line has been dropped; this was never present in
+   upstream QEMU and has been removed for consistency. Use
+   "-drive,if=sd,index=N,file=file.img" for N=0,1,2... instead
+ - Fixes #886980: 8 and 16 bit reads from the OMAP GPIO module
+   would crash due to an infinite recursion
+
+version 2011.10:
+ - Beagle models now support USB networking (run the model with
+   "-usb -device usb-net,netdev=mynet -netdev user,id=mynet")
+ - Instructions introduced with the Cortex-A15 (ARM mode
+   SDIV and UDIV, and the VFPv4 fused multiply-accumulate
+   instructions VFMA, VFMS, VFNMA, VFNMS) are now supported
+   in linux-user mode
+ - Fixes a bug which would cause returning of the wrong NaN values
+   in some cases (when more than one input is a NaN or when the
+   "default NaN" should be returned)
+
+version 2011.09:
+ - linux-user mode now supports the 64 bit cmpxchg kernel helpers
+   (only needed for applications compiled for ARMv6 or lower)
+ - correct a bug which would cause a crash trying to use USB
+   on the n800 and n810 models
+ - PL111 display controller now supported; this fixes a problem
+   where BGR was interpreted as RGB on recent versatilepb kernels
+ - Compilation failures on SPARC, ARM, ia64 fixed
+
+version 2011.08:
+ - Fixes #816791: ARMv6 cp15 barrier instructions now work
+   in linux-user mode as well as system mode
+ - Support for ARM1176JZF-S core has been added (thanks to
+   Jamie Iles <jamie@jamieiles.com>)
+ - Add workaround for kernel bug #727781 (which has resurfaced
+   in 3.0) to suppress warnings about bad-width omap i2c accesses
+
+version 2011.07:
+ - Fixes a compile failure on ia64 hosts
+ - Fixes #728630: syscall 369 (prlimit64) implemented in
+   linux-user mode
+ - Fixes #802228: fix an ELF loader bug that caused problems
+   with binaries generated by the Google Go compiler
+
+version 2011.06:
+ - Introduces a model of the Gumstix Overo board ("overo")
+ - Fixes #708703: the OMAP3 OHCI USB controller is implemented
+   and works for USB keyboard and mouse
+ - Fixes #768650: suppresses a "Bad register 0x000000f8"
+   warning caused by the Linux kernel deliberately accessing
+   a non-existent OMAP3 interrupt controller register
+ - Models a DDC I2C slave to pass fake EDID monitor data,
+   to satisfy Linux kernels which insist on probing for a
+   monitor before turning on the display
+ - Fixes overflow when calculating result of signed VABAL
+ - Fixes handling of Neon UNDEF cases
+ - Fixes setting of floating point exception flags for
+   various Neon and VFP instructions
+ - Fixes corruption of base register for an abort midway
+   through a Thumb LDM which includes the base register in
+   the set of registers to be loaded
+
+version 2011.04-1:
+ - Fixes a compilation failure with gcc 4.5
+
+version 2011.04-0:
+ - Fixes #731095: compiling for an ARM host in Thumb mode
+   now works (QEMU no longer segfaults on startup)
+ - Fixes #731279: compilation failures on SPARC Lucid fixed
+ - Some minor fixes to Neon corner cases (correctly handle
+   some UNDEF patterns, generate correct results for
+   VABAL, handle denormals and NaNs correctly in Neon floating
+   point arithmetic)
+
+version 2011.03-1:
+ - Fixes #731093: models with a PL181 (including vexpress-a9,
+   versatilepb and realview) would crash unless an SD card
+   image was specified for each PL181
+
+version 2011.03-0:
+
+ - Introduces a model of the ARM Versatile Express with
+   Cortex-A9MPx4 daughterboard ("vexpress-a9")
+ - Fixes #644961: linux-user mode now supports epoll syscalls
+ - Fixes #721801: linux-user mode llseek on 64 bit hosts no longer
+   truncates the returned  seek position to 32 bits
+ - Fixes #714600: OMAP3 UARTs now handle the extensions beyond
+   16550A compatibility; in particular Linux images using the
+   omap-hsuart driver can now boot to a shell prompt
+ - Fixes #714606: an SD card model bug was causing spurious
+   "not in Sending-Data state" messages on OMAP3
+ - Fixes #716336: should now compile on SPARC
+ - Fixes #713101: the OMAP3 MMC model no longer causes Linux
+   to hang if it tries to enable a swapfile
+ - Has a number of minor ARM instruction correctness fixes
+ - Partial fix for #728630: linux-user mode now has a dummy
+   implementation of prlimit64 to silence the warnings when
+   running newer versions of apt, pending a proper implementation
+   of this syscall.
+
+version 2011.02-0:
+
+ - There are no changes in this version compared to RC2
+
+version 2011.02-0 RC2:
+
+ - Fixes #709711, #711272: compile failure with Ubuntu ARM compiler
+ - Fixes #709965: don't ship binary ROMs without clear license
+ - Update to newer version of upstream trunk
+ - Remove essentially dead code in qemu-lock.h that could cause
+   compile failure on ARM when compiling without optimisation
+
+version 2011.02-0 RC1:
+
+ - This initial qemu-linaro release includes all the ARM code generation
+   fixes from the qemu-meego tree; these are mainly Neon related
+ - The OMAP3 support from qemu-meego is also included
+ - Fixes #703094: newer u-boot MMC drivers would fail with
+   "timedout waiting for stat!" message
+ - Fixes #622408: silences spurious "SD: Unknown CMD52" messages
+ - Fixes #704484: newer x-loader images were causing qemu to die
+   immediately with "Trying to execute code outside RAM or ROM"
+ - Fixes #697684: implements missing syscall 341 and ioctl 0xc020660b;
+   these were causing lots of warnings when running newer versions
+   of apt-get under qemu usermode emulation
