@@ -183,6 +183,7 @@ pkgversion=""
 pie=""
 zero_malloc=""
 trace_backend="nop"
+mtrace="no"
 trace_file="trace"
 spice=""
 rbd=""
@@ -584,6 +585,8 @@ for opt do
   --target-list=*) target_list="$optarg"
   ;;
   --enable-trace-backend=*) trace_backend="$optarg"
+  ;;
+  --enable-mtrace) mtrace="yes"
   ;;
   --with-trace-file=*) trace_file="$optarg"
   ;;
@@ -3396,6 +3399,11 @@ fi
 echo "CONFIG_TRACE_FILE=$trace_file" >> $config_host_mak
 if test "$trace_default" = "yes"; then
   echo "CONFIG_TRACE_DEFAULT=y" >> $config_host_mak
+fi
+
+# memory tracing
+if test "$mtrace" = "yes"; then
+  echo "CONFIG_TRACE_MEMORY=y" >> $config_host_mak
 fi
 
 echo "TOOLS=$tools" >> $config_host_mak

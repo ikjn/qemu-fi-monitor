@@ -805,3 +805,23 @@ qxl_render_blit_guest_primary_initialized(void) ""
 qxl_render_blit(int32_t stride, int32_t left, int32_t right, int32_t top, int32_t bottom) "stride=%d [%d, %d, %d, %d]"
 qxl_render_guest_primary_resized(int32_t width, int32_t height, int32_t stride, int32_t bytes_pp, int32_t bits_pp) "%dx%d, stride %d, bpp %d, depth %d"
 qxl_render_update_area_done(void *cookie) "%p"
+
+# fault injection monitor - cpu memory access
+
+# ohci monitor
+ohci_reset(void *opaque) "opaque %p"
+ohci_intr_update(void *ohci) "ohci %p"
+ohci_set_interrupt(void *ohci, uint32_t intr) "ohci %p intr %u"
+ohci_attach(void *port1) "port %p"
+ohci_wakeup(void *port1) "port %p"
+ohci_read_ed(void *ohci, uint32_t addr, void *ed) "ohci %p addr %u ed %p"
+ohci_read_td(void *ohci, uint32_t addr, void *td) "ohci %p addr %u td %p"
+ohci_read_iso_td(void *ohci, uint32_t addr, void *td) "ohci %p addr %u td %p"
+ohci_read_hcca(void *ohci, uint32_t addr, void *hcca) "ohci %p addr %u hcca %p"
+ohci_put_ed(void *ohci, uint32_t addr, void *ed) "ohci %p addr %u ed %p"
+
+# mtrace 
+mtrace_add_filter(const char *devname, uint32_t addr, uint32_t size) "dev %s addr %u size %u"
+mtrace_del_filter(const char *devname, uint32_t addr) "dev %s addr %u"
+mtrace_hook_access(const char *dev, uint32_t addr, uint32_t size, int write) "dev %s addr %u size %u write %d"
+mtrace_register_dev(const char *name, int enable) "dev %s enable %d"

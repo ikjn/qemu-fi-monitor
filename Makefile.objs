@@ -435,6 +435,8 @@ trace-nested-$(CONFIG_TRACE_STDERR) += stderr.o
 
 trace-nested-y += control.o
 
+trace-nested-$(CONFIG_TRACE_MEMORY) += mtrace.o
+
 trace-obj-y += $(addprefix trace/, $(trace-nested-y))
 
 $(trace-obj-y): $(GENERATED_HEADERS)

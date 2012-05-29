@@ -248,6 +248,22 @@ Open, close, or flush the trace file.  If no argument is given, the status of th
 ETEXI
 #endif
 
+#if defined(CONFIG_TRACE_MEMORY)
+    {
+        .name       = "mtrace",
+        .args_type  = "devname:s,op:b",
+        .params     = "devname on|off",
+        .help       = "activate memory tracer.",
+        .mhandler.cmd = do_mtrace,
+    },
+
+STEXI
+@item mtrace devname  on|off
+@findex mtrace
+Activate memory tracing of the specified device to trace-backend.
+ETEXI
+#endif
+
     {
         .name       = "log",
         .args_type  = "items:s",

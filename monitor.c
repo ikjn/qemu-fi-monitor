@@ -62,6 +62,9 @@
 #ifdef CONFIG_TRACE_SIMPLE
 #include "trace/simple.h"
 #endif
+#ifdef CONFIG_TRACE_MEMORY
+#include "trace/mtrace.h"
+#endif
 #include "ui/qemu-spice.h"
 #include "memory.h"
 #include "qmp-commands.h"
@@ -631,6 +634,18 @@ static void do_trace_event_set_state(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "unknown event name \"%s\"\n", tp_name);
     }
 }
+
+#ifdef CONFIG_TRACE_MEMORY
+/* e.g., mtrace ohci-hcd on|off */
+static void do_mtrace(Monitor *mon, const QDict *qdict)
+{
+    const char *name = qdict_get_try_str(qdict, "name");
+
+    if (mtrace_control(name, qdict_get_bool(qdict, "arg"))) {
+	    /* TODO: show error message */
+    }
+}
+#endif
 
 #ifdef CONFIG_TRACE_SIMPLE
 static void do_trace_file(Monitor *mon, const QDict *qdict)
