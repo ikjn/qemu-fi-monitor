@@ -310,41 +310,6 @@ struct ohci_iso_td {
 
 #define OHCI_HRESET_FSBIR       (1 << 0)
 
-#if defined(CONFIG_TRACE_MEMORY)
-struct ohci_mtrace_data {
-	int type;	/* ED, TD */
-	uint32_t head_paddr;
-};
-
-static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
-                                        uint32_t paddr, uint32_t size)
-{
-}
-
-static void ohci_mtrace_callback_del(struct mtrace_reg *reg)
-{
-	g_free(reg->opaque);
-}
-
-static void ohci_mtrace_ctrl_rescan(OHCIState *ohci, uint32_t ctrl_head)
-{
-	/* TODO: rescan all ctrl ed list */
-	struct mtrace_reg *reg;
-	struct ohci_mtrace_data *data;
- 	
-	reg =  g_malloc0(sizeof(*reg));
-	data = g_malloc0(sizeof(*data));
-
-	reg->paddr = ctrl_head;
-	reg->size = sizeof(ctrl_head);
-	reg->opaque = data;
-	reg->hook_callback = ohci_mtrace_callback_hook;
-	reg->del_callback = ohci_mtrace_callback_del;
-
-	mtrace_add_filter(ohci->mtrace_id, reg);
-}
-#endif
-
 /* Update IRQ levels */
 static inline void ohci_intr_update(OHCIState *ohci)
 {
@@ -690,6 +655,76 @@ static void ohci_copy_iso_td(OHCIState *ohci,
     buf += n;
     cpu_physical_memory_rw(ptr + ohci->localmem_base, buf, len - n, write);
 }
+
+#if defined(CONFIG_TRACE_MEMORY)
+
+#define TRACE_TYPE_ED       0x01
+#define TRACE_TYPE_TD       0x02
+#define TRACE_TYPE_ISOTD    0x03
+
+#define TRACE_XFER_CTRL     0x10
+#define TRACE_XFER_BULK     0x20
+#define TRACE_XFER_INT      0x30
+
+struct ohci_mtrace_td;
+struct ohci_mtrace_ed {
+    struct mtrace_reg   reg;
+    uint32_t flags;
+    QLIST_HEAD(, ohci_mtrace_td) tdlist;
+    QLIST_ENTRY(ohci_mtrace_ed) link;
+};
+
+struct ohci_mtrace_td {
+    struct mtrace_reg   reg;
+    uint32_t flags;
+    struct ohci_mtrace_data *tailp;
+    struct ohci_mtrace_data *nexted;
+};
+
+
+static uint32_t mtrace_ctrl_head;
+static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
+                        uint32_t paddr, uint32_t size,
+                        int write, uint8_t *data)
+{
+}
+
+static void ohci_mtrace_callback_del(struct mtrace_reg *reg)
+{
+	g_free(reg->opaque);
+    reg->opaque = NULL;
+}
+
+static void ohci_mtrace_remove_edlist(OHCIState *ohci, uint32_t ed_head)
+{
+
+}
+
+static void ohci_mtrace_ctrl_rescan(OHCIState *ohci, uint32_t ctrl_head)
+{
+	/* TODO: rescan all ctrl ed list */
+	struct ohci_mtrace_data *data;
+    struct ohci_ed ed;
+    
+    /* remove all old EDs & TDs */
+    ohci_mtrace_remove_edlist(ctrl_head);
+
+    if (!ctrl_head) {
+        return;
+    }
+	data = g_malloc0(sizeof(*data));
+    reg = (struct mtrace_reg*)data;
+
+	reg->paddr = ctrl_head;
+	reg->size = sizeof(ed);
+	reg->opaque = data;
+	reg->hook_callback = ohci_mtrace_callback_hook;
+	reg->del_callback = ohci_mtrace_callback_del;
+    reg->devid = ohci->mtrace_id;
+   
+    ohci_read_ed(ohci, reg->paddr, &ed);
+}
+#endif
 
 static void ohci_process_lists(OHCIState *ohci, int completion);
 

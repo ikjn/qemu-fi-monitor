@@ -23,6 +23,7 @@
  */
 #include "qemu-timer.h"
 #include "memory.h"
+#include "trace/mtrace.h"
 
 #define DATA_SIZE (1 << SHIFT)
 
@@ -294,6 +295,7 @@ void glue(glue(glue(HELPER_PREFIX, st), SUFFIX), MMUSUFFIX)(ENV_PARAM
             addend = env->tlb_table[mmu_idx][index].addend;
             glue(glue(st, SUFFIX), _raw)((uint8_t *)(intptr_t)
                                          (addr + addend), val);
+            mtrace_hook_write ((uint32_t)(addr), DATA_SIZE, (uint8_t*)&val);
         }
     } else {
         /* the page is not in the TLB : fill it */
@@ -349,6 +351,7 @@ static void glue(glue(slow_st, SUFFIX), MMUSUFFIX)(ENV_PARAM
             uintptr_t addend = env->tlb_table[mmu_idx][index].addend;
             glue(glue(st, SUFFIX), _raw)((uint8_t *)(intptr_t)
                                          (addr + addend), val);
+            mtrace_hook_write ((uint32_t)(addr), DATA_SIZE, (uint8_t*)&val);
         }
     } else {
         /* the page is not in the TLB : fill it */
