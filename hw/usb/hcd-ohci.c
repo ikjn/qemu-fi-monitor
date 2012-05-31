@@ -317,7 +317,7 @@ struct ohci_mtrace_data {
 };
 
 static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
-									uint32_t paddr, uint32_t size)
+                                        uint32_t paddr, uint32_t size)
 {
 }
 
