@@ -17,6 +17,7 @@
 #include "monitor.h"
 #include "sysemu.h"
 #include "blockdev.h"
+#include "fi.h"
 
 //#define DEBUG_MSD
 
@@ -61,6 +62,10 @@ typedef struct {
     uint32_t removable;
     /* For async completion.  */
     USBPacket *packet;
+#if defined(CONFIG_FAULT_INJECTION)
+    struct fi_info *fi_datain_stall;
+    struct fi_info *fi_dataout_stall;
+#endif
 } MSDState;
 
 struct usb_msd_cbw {
@@ -414,6 +419,11 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
             } else {
                 ret = p->result;
             }
+#if defined(CONFIG_FAULT_INJECTION)
+            if (ret >=0 && fi_should_fail(s->fi_dataout_stall)) {
+                ret = USB_RET_STALL;
+            }
+#endif
             break;
 
         default:
@@ -475,6 +485,11 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
             } else {
                 ret = p->result;
             }
+#if defined(CONFIG_FAULT_INJECTION)
+            if (ret >=0 && fi_should_fail(s->fi_datain_stall)) {
+                ret = USB_RET_STALL;
+            }
+#endif
             break;
 
         default:
@@ -513,6 +528,21 @@ static const struct SCSIBusInfo usb_msd_scsi_info = {
     .complete = usb_msd_command_complete,
     .cancel = usb_msd_request_cancelled
 };
+
+#if defined(CONFIG_FAULT_INJECTION)
+struct msd_fi_desc {
+    const char *name;
+    const char *desc;
+};
+static struct msd_fi_desc fi_datain_stall= {
+    .name = "msd-datain-stall",
+    .desc = "insert STALL into DATAIN packets",
+};
+static struct msd_fi_desc fi_dataout_stall = {
+    .name = "msd-dataout-stall",
+    .desc = "insert STALL into DATAOUT packets",
+};
+#endif
 
 static int usb_msd_initfn(USBDevice *dev)
 {
@@ -569,6 +599,11 @@ static int usb_msd_initfn(USBDevice *dev)
         }
     }
 
+#if defined(CONFIG_FAULT_INJECTION)
+    /* TODO: qobject ? */
+    s->fi_datain_stall = fi_create(fi_datain_stall.name, fi_datain_stall.desc, 1);
+    s->fi_dataout_stall = fi_create(fi_dataout_stall.name, fi_dataout_stall.desc, 1);
+#endif
     return 0;
 }
 
