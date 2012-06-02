@@ -1318,6 +1318,21 @@ passed since 1970, i.e. unix epoch.
 
 @end table
 ETEXI
+#ifdef CONFIG_FAULT_INJECTION
+    {
+        .name       = "fi",
+        .args_type  = "fault:s,trigger:s?,command:s?,opt1:s?,opt2:s? opt3:s?",
+        .params     = "fault-name [trigger [on|off] [opt1] [opt2] [opt3]]",
+        .help       = "activate fault injection",
+        .mhandler.cmd = do_fi,
+    },
+
+STEXI
+@item fi fault-name [trigger [on|off] [option]]
+@findex fi
+Activate an fault.
+ETEXI
+#endif
 
     {
         .name       = "info",

@@ -73,6 +73,10 @@
 #endif
 #include "hw/lm32_pic.h"
 
+#if defined(CONFIG_FAULT_INJECTION)
+#include "fi.h"
+#endif
+
 //#define DEBUG
 //#define DEBUG_COMPLETION
 
