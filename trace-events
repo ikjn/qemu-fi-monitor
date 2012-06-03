@@ -823,5 +823,5 @@ ohci_put_ed(void *ohci, uint32_t addr, void *ed) "ohci %p addr %u ed %p"
 # mtrace 
 mtrace_add_filter(const char *devname, uint32_t addr, uint32_t size) "dev %s addr %u size %u"
 mtrace_del_filter(const char *devname, uint32_t addr) "dev %s addr %u"
-mtrace_hook_access(const char *dev, uint32_t addr, uint32_t size, int write) "dev %s addr %u size %u write %d"
+mtrace_hook_access(uint8_t devid, uint32_t addr, uint32_t size, int write) "dev %s addr %u size %u write %d"
 mtrace_register_dev(const char *name, int enable) "dev %s enable %d"
