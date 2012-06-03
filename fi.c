@@ -187,6 +187,7 @@ int fi_should_fail(struct fi_info* fi)
         if (attr->should_fail(attr)) {
             ret = 1;
             attr->ntrig++;
+            DPRINTF ("fault %p injected %d/%d/%d\n", attr, ret, attr->ntrig, attr->ntries);
         }
         attr->ntries++;
     }

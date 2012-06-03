@@ -65,6 +65,7 @@ typedef struct {
 #if defined(CONFIG_FAULT_INJECTION)
     struct fi_info *fi_datain_stall;
     struct fi_info *fi_dataout_stall;
+    struct fi_info *fi_dataout_crc;
 #endif
 } MSDState;
 
@@ -227,6 +228,8 @@ static void usb_msd_transfer_data(SCSIRequest *req, uint32_t len)
             if (p->pid == USB_TOKEN_OUT && s->mode== USB_MSDM_DATAOUT) {
                 if (fi_should_fail(s->fi_dataout_stall))
                     p->result = USB_RET_STALL;
+                else if (fi_should_fail(s->fi_dataout_crc))
+                    p->result = USB_RET_CRC;
             } else if (p->pid == USB_TOKEN_IN && s->mode == USB_MSDM_DATAIN) {
                 if (fi_should_fail(s->fi_datain_stall))
                     p->result = USB_RET_STALL;
@@ -432,7 +435,8 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
 #if defined(CONFIG_FAULT_INJECTION)
             if (ret >=0 && fi_should_fail(s->fi_dataout_stall))
                     ret = USB_RET_STALL;
-            }
+            else if (fi_should_fail(s->fi_dataout_crc))
+                    ret = USB_RET_CRC;
 #endif
             break;
 
@@ -498,7 +502,7 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
 #if defined(CONFIG_FAULT_INJECTION)
             if (ret >=0 && fi_should_fail(s->fi_datain_stall)) {
                 ret = USB_RET_STALL;
-            }
+            } 
 #endif
             break;
 
@@ -552,6 +556,15 @@ static struct msd_fi_desc fi_dataout_stall = {
     .name = "msd-dataout-stall",
     .desc = "insert STALL into DATAOUT packets",
 };
+static struct msd_fi_desc fi_dataout_crc = {
+    .name = "msd-dataout-crc",
+    .desc = "insert CRC error into DATAOUT packets (EC+1)",
+};
+static inline void install_fi(struct fi_info** fi, struct msd_fi_desc *fi_desc)
+{
+    *fi = fi_create(fi_desc->name, fi_desc->desc, 1);
+    DPRINTF ("Fault %s injected into %p\n", fi_desc->name, *fi);
+}
 #endif
 
 static int usb_msd_initfn(USBDevice *dev)
@@ -611,10 +624,9 @@ static int usb_msd_initfn(USBDevice *dev)
 
 #if defined(CONFIG_FAULT_INJECTION)
     /* TODO: qobject ? */
-    s->fi_datain_stall = fi_create(fi_datain_stall.name, fi_datain_stall.desc, 1);
-    s->fi_dataout_stall = fi_create(fi_dataout_stall.name, fi_dataout_stall.desc, 1);
-    DPRINTF ("install stall fault injection datain = %p, dataout = %p\n",
-        s->fi_datain_stall, s->fi_dataout_stall);
+    install_fi(&s->fi_datain_stall, &fi_datain_stall);
+    install_fi(&s->fi_dataout_stall, &fi_dataout_stall);
+    install_fi(&s->fi_dataout_crc, &fi_dataout_crc);
 #endif
     return 0;
 }
