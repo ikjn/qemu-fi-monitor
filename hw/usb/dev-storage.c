@@ -223,6 +223,15 @@ static void usb_msd_transfer_data(SCSIRequest *req, uint32_t len)
                usb_packet_complete returns.  */
             DPRINTF("Packet complete %p\n", p);
             s->packet = NULL;
+#if defined(CONFIG_FAULT_INJECTION)
+            if (p->pid == USB_TOKEN_OUT && s->mode== USB_MSDM_DATAOUT) {
+                if (fi_should_fail(s->fi_dataout_stall))
+                    p->result = USB_RET_STALL;
+            } else if (p->pid == USB_TOKEN_IN && s->mode == USB_MSDM_DATAIN) {
+                if (fi_should_fail(s->fi_datain_stall))
+                    p->result = USB_RET_STALL;
+            }
+#endif
             usb_packet_complete(&s->dev, p);
         }
     }
@@ -394,7 +403,7 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
             break;
 
         case USB_MSDM_DATAOUT:
-            DPRINTF("Data out %zd/%d\n", p->iov.size, s->data_len);
+            DPRINTF("Data out %zd/%d %d\n", p->iov.size, s->data_len, p->result);
             if (p->iov.size > s->data_len) {
                 goto fail;
             }
@@ -408,6 +417,7 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
                     usb_packet_skip(p, len);
                     s->data_len -= len;
                     if (s->data_len == 0) {
+                        DPRINTF ("xfer complete, CSW\n");
                         s->mode = USB_MSDM_CSW;
                     }
                 }
@@ -420,8 +430,8 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
                 ret = p->result;
             }
 #if defined(CONFIG_FAULT_INJECTION)
-            if (ret >=0 && fi_should_fail(s->fi_dataout_stall)) {
-                ret = USB_RET_STALL;
+            if (ret >=0 && fi_should_fail(s->fi_dataout_stall))
+                    ret = USB_RET_STALL;
             }
 #endif
             break;
@@ -603,6 +613,8 @@ static int usb_msd_initfn(USBDevice *dev)
     /* TODO: qobject ? */
     s->fi_datain_stall = fi_create(fi_datain_stall.name, fi_datain_stall.desc, 1);
     s->fi_dataout_stall = fi_create(fi_dataout_stall.name, fi_dataout_stall.desc, 1);
+    DPRINTF ("install stall fault injection datain = %p, dataout = %p\n",
+        s->fi_datain_stall, s->fi_dataout_stall);
 #endif
     return 0;
 }
