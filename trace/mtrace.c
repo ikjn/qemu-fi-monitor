@@ -187,8 +187,10 @@ void mtrace_del_filter(struct mtrace_reg *reg)
 	QLIST_REMOVE(reg, hashlink);
 	QLIST_REMOVE(reg, devlink);
 
-	reg->del_callback(reg);
-	g_free(reg);
+    if (reg->del_callback)
+	    reg->del_callback(reg);
+	else
+        g_free(reg);
 
 err_del_filter:
 	mtrace_unlock();
