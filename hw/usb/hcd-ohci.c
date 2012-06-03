@@ -1079,6 +1079,11 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
                 DPRINTF("usb-ohci: got BABBLE\n");
                 OHCI_SET_BM(td.flags, TD_CC, OHCI_CC_DATAOVERRUN);
                 break;
+            case USB_RET_CRC:
+                DPRINTF("usb-ohci: got CRC error\n");
+                OHCI_SET_BM(td.flags, TD_EC, 3);
+                OHCI_SET_BM(td.flags, TD_CC, OHCI_CC_CRC);
+                break;
             default:
                 fprintf(stderr, "usb-ohci: Bad device response %d\n", ret);
                 OHCI_SET_BM(td.flags, TD_CC, OHCI_CC_UNDEXPETEDPID);
