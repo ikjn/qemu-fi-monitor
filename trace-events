@@ -814,14 +814,25 @@ ohci_intr_update(void *ohci) "ohci %p"
 ohci_set_interrupt(void *ohci, uint32_t intr) "ohci %p intr %u"
 ohci_attach(void *port1) "port %p"
 ohci_wakeup(void *port1) "port %p"
-ohci_read_ed(void *ohci, uint32_t addr, void *ed) "ohci %p addr %u ed %p"
-ohci_read_td(void *ohci, uint32_t addr, void *td) "ohci %p addr %u td %p"
-ohci_read_iso_td(void *ohci, uint32_t addr, void *td) "ohci %p addr %u td %p"
-ohci_read_hcca(void *ohci, uint32_t addr, void *hcca) "ohci %p addr %u hcca %p"
-ohci_put_ed(void *ohci, uint32_t addr, void *ed) "ohci %p addr %u ed %p"
 
-# mtrace 
-mtrace_add_filter(const char *devname, uint32_t addr, uint32_t size) "dev %s addr %u size %u"
-mtrace_del_filter(const char *devname, uint32_t addr) "dev %s addr %u"
-mtrace_hook_access(uint8_t devid, uint32_t addr, uint32_t size, int write) "dev %s addr %u size %u write %d"
-mtrace_register_dev(const char *name, int enable) "dev %s enable %d"
+ohci_read_hcca(void *ohci, uint32_t addr, void *hcca) "ohci %p addr %x hcca %p"
+ohci_put_hcca(void *ohci, uint32_t addr, void *hcca) "ohci %p addr %x hcca %p"
+
+ohci_read_ed(void *ohci, uint32_t addr, void *ed) "ohci %p addr %x ed %p"
+ohci_put_ed(void *ohci, uint32_t addr, void *ed) "ohci %p addr %x ed %p"
+
+ohci_read_td(void *ohci, uint32_t addr, void *td) "ohci %p addr %x td %p"
+ohci_put_td(void *ohci, uint32_t addr, void *td) "ohci %p addr %x td %p"
+ohci_copy_td(void *ohci, void* td, void* buf, int len, int write) "ohci %p td %p buf %p len %d write %d"
+
+ohci_read_iso_td(void *ohci, uint32_t addr, void *td) "ohci %p addr %x td %p"
+ohci_put_iso_td(void *ohci, uint32_t addr, void *td) "ohci %p addr %x td %p"
+ohci_copy_iso_td(void *ohci, uint32_t start_addr, uint32_t end_addr, uint8_t *buf, int len, int write) "ohci %p start %x end %x buf %p len %d write %d"
+
+ohci_process_lists(void *ohci, int type, uint32_t head) "ohci %p type %d head %x"
+
+ohci_mem_read(void* ohci, uint32_t addr, unsigned size) "ohci %p addr %x size %u"
+ohci_mem_write(void* ohci, uint32_t addr, uint64_t val, unsigned size) "ohci %p addr %x val %"PRIu64" size %u"
+
+# ohci-mtrace
+ohci_mtrace_callback_hook(uint32_t flags, uint32_t raddr, uint32_t aaddr, uint32_t size, int write) "flags %x reg-addr %x hooked-addr %x size %u write %d"

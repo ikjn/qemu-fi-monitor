@@ -114,8 +114,9 @@ typedef struct {
     uint8_t usb_buf[8192];
     uint32_t async_td;
     int async_complete;
-
-	int mtrace_id;
+#if defined(CONFIG_TRACE_MEMORY)
+	void* mtrace_bulk;
+#endif
 } OHCIState;
 
 /* Host Controller Communications Area */
@@ -598,12 +599,14 @@ static inline int ohci_put_ed(OHCIState *ohci,
 static inline int ohci_put_td(OHCIState *ohci,
                               uint32_t addr, struct ohci_td *td)
 {
+    trace_ohci_put_td(ohci, addr, td);
     return put_dwords(ohci, addr, (uint32_t *)td, sizeof(*td) >> 2);
 }
 
 static inline int ohci_put_iso_td(OHCIState *ohci,
                                   uint32_t addr, struct ohci_iso_td *td)
 {
+    trace_ohci_put_iso_td(ohci, addr, td);
     return (put_dwords(ohci, addr, (uint32_t *)td, 4) &&
             put_words(ohci, addr + 16, td->offset, 8));
 }
@@ -611,6 +614,7 @@ static inline int ohci_put_iso_td(OHCIState *ohci,
 static inline int ohci_put_hcca(OHCIState *ohci,
                                 uint32_t addr, struct ohci_hcca *hcca)
 {
+    trace_ohci_put_hcca(ohci, addr, hcca);
     cpu_physical_memory_write(addr + ohci->localmem_base + HCCA_WRITEBACK_OFFSET,
                               (char *)hcca + HCCA_WRITEBACK_OFFSET,
                               HCCA_WRITEBACK_SIZE);
@@ -624,6 +628,7 @@ static void ohci_copy_td(OHCIState *ohci, struct ohci_td *td,
     uint32_t ptr;
     uint32_t n;
 
+    trace_ohci_copy_td(ohci, td, buf, len, write);
     ptr = td->cbp;
     n = 0x1000 - (ptr & 0xfff);
     if (n > len)
@@ -644,6 +649,7 @@ static void ohci_copy_iso_td(OHCIState *ohci,
     uint32_t ptr;
     uint32_t n;
 
+    trace_ohci_copy_iso_td(ohci, start_addr, end_addr, buf, len, write);
     ptr = start_addr;
     n = 0x1000 - (ptr & 0xfff);
     if (n > len)
@@ -657,72 +663,102 @@ static void ohci_copy_iso_td(OHCIState *ohci,
 }
 
 #if defined(CONFIG_TRACE_MEMORY)
+#define DEBUG_OHCI_MTRACE
 
-#define TRACE_TYPE_ED       0x01
-#define TRACE_TYPE_TD       0x02
-#define TRACE_TYPE_ISOTD    0x03
+#if defined(DEBUG_OHCI_MTRACE)
+#define DPRINTF1(fmt, ...) do { printf ("ohci_mtrace: " fmt, ## __VA_ARGS__); } while(0)
+#else
+#define DRPINTF1(fmt, ...)
+#endif
 
-#define TRACE_XFER_CTRL     0x10
-#define TRACE_XFER_BULK     0x20
-#define TRACE_XFER_INT      0x30
+#define MTR_OHCI_ED           0x001
+#define MTR_OHCI_TD           0x002
 
-struct ohci_mtrace_td;
-struct ohci_mtrace_ed {
-    struct mtrace_reg   reg;
+struct ohci_mtrace_data {
+    struct mtrace_reg reg;
     uint32_t flags;
-    QLIST_HEAD(, ohci_mtrace_td) tdlist;
-    QLIST_ENTRY(ohci_mtrace_ed) link;
 };
 
-struct ohci_mtrace_td {
-    struct mtrace_reg   reg;
-    uint32_t flags;
-    struct ohci_mtrace_data *tailp;
-    struct ohci_mtrace_data *nexted;
-};
-
-
-static uint32_t mtrace_ctrl_head;
 static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
                         uint32_t paddr, uint32_t size,
                         int write, uint8_t *data)
 {
+    struct ohci_mtrace_data *t= (struct ohci_mtrace_data*)reg;
+    trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
 }
 
-static void ohci_mtrace_callback_del(struct mtrace_reg *reg)
+static struct ohci_mtrace_data* ohci_mtrace_register_edtd(void *dev, uint32_t addr, uint32_t flags)
 {
-	g_free(reg->opaque);
-    reg->opaque = NULL;
+    struct ohci_mtrace_data *data;
+
+    data = g_malloc0(sizeof(*data));
+    if (!data) {
+        fprintf (stderr, "ohci-mtrace: failed to malloc\n");
+        return NULL;
+    }
+    memset(data, 0, sizeof(*data));
+    data->reg.paddr = addr;
+    data->reg.size = 16;
+    data->reg.hook_callback = ohci_mtrace_callback_hook;
+    data->flags = flags;
+    mtrace_add_filter(dev, (struct mtrace_reg*)data);
+
+    return data;
+
 }
 
-static void ohci_mtrace_remove_edlist(OHCIState *ohci, uint32_t ed_head)
-{
-
-}
-
-static void ohci_mtrace_ctrl_rescan(OHCIState *ohci, uint32_t ctrl_head)
+static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
 {
 	/* TODO: rescan all ctrl ed list */
-	struct ohci_mtrace_data *data;
     struct ohci_ed ed;
-    
-    /* remove all old EDs & TDs */
-    ohci_mtrace_remove_edlist(ctrl_head);
-
-    if (!ctrl_head) {
-        return;
-    }
-	data = g_malloc0(sizeof(*data));
-    reg = (struct mtrace_reg*)data;
-
-	reg->paddr = ctrl_head;
-	reg->size = sizeof(ed);
-	reg->opaque = data;
-	reg->hook_callback = ohci_mtrace_callback_hook;
-	reg->del_callback = ohci_mtrace_callback_del;
-    reg->devid = ohci->mtrace_id;
+    struct ohci_td td;
+    uint32_t cur_ed, next_ed, cur_td, next_td, tail_td;
+    int cnt;
    
-    ohci_read_ed(ohci, reg->paddr, &ed);
+    cnt = mtrace_del_all(dev);
+    DPRINTF1 ("remove hook %d entries.\n", cnt);
+
+    cnt = 0;
+    for (cur_ed = head; cur_ed; cur_ed = next_ed) {
+        if (!ohci_read_ed(ohci, cur_ed, &ed)) {
+            fprintf(stderr, "ohci-mtrace: failed to read ed at %x\n", cur_ed);
+            return;
+        }
+        
+        if ((ed.head & OHCI_ED_H) || (ed.flags & OHCI_ED_K))
+            continue;
+
+        DPRINTF1 ("dev %p add ed %x\n", dev, cur_ed);
+        ohci_mtrace_register_edtd(dev, cur_ed, MTR_OHCI_ED);
+        cnt++;
+
+        tail_td = ed.tail & OHCI_DPTR_MASK;
+        cur_td = ed.head & OHCI_DPTR_MASK;
+        for (; cur_td && cur_td != tail_td; cur_td = next_td) {
+            if (!ohci_read_td(ohci, cur_td, &td)) {
+                fprintf(stderr, "ohci-mtrace: failed to read td at %x\n", cur_td);
+                break;
+            }
+            DPRINTF1 ("dev %p add td %x\n", dev, cur_td);
+            ohci_mtrace_register_edtd(dev, cur_td, MTR_OHCI_TD);
+            cnt++;
+            next_td = td.next & OHCI_DPTR_MASK;
+            if (next_td == cur_td) {
+                DPRINTF1 ("next_td = cur (%x). stop hook\n", cur_td);
+                break;
+            }
+        }
+        next_ed = ed.next & OHCI_DPTR_MASK;
+    }
+
+    DPRINTF ("add hook %d entries.\n", cnt);
+}
+
+static void ohci_mtrace_hook_bulklist(OHCIState *ohci)
+{
+    /* BLE = BulkListEnable, BLF = BulkListFilled */
+    if ((ohci->ctl & OHCI_CTL_BLE) && (ohci->status & OHCI_STATUS_BLF))
+        ohci_mtrace_hook_list(ohci, ohci->mtrace_bulk, ohci->bulk_head);
 }
 #endif
 
@@ -1267,6 +1303,7 @@ static void ohci_process_lists(OHCIState *ohci, int completion)
             DPRINTF("usb-ohci: head %x, cur %x\n",
                     ohci->ctrl_head, ohci->ctrl_cur);
         }
+        trace_ohci_process_lists(ohci, 0, ohci->ctrl_head);
         if (!ohci_service_ed_list(ohci, ohci->ctrl_head, completion)) {
             ohci->ctrl_cur = 0;
             ohci->status &= ~OHCI_STATUS_CLF;
@@ -1274,10 +1311,14 @@ static void ohci_process_lists(OHCIState *ohci, int completion)
     }
 
     if ((ohci->ctl & OHCI_CTL_BLE) && (ohci->status & OHCI_STATUS_BLF)) {
+        trace_ohci_process_lists(ohci, 1, ohci->bulk_head);
         if (!ohci_service_ed_list(ohci, ohci->bulk_head, completion)) {
             ohci->bulk_cur = 0;
             ohci->status &= ~OHCI_STATUS_BLF;
         }
+#if defined(CONFIG_TRACE_MEMORY)
+        ohci_mtrace_hook_bulklist(ohci);
+#endif
     }
 }
 
@@ -1565,6 +1606,7 @@ static uint64_t ohci_mem_read(void *opaque,
     OHCIState *ohci = opaque;
     uint32_t retval;
 
+    trace_ohci_mem_read(ohci, addr, size);
     /* Only aligned reads are allowed on OHCI */
     if (addr & 3) {
         fprintf(stderr, "usb-ohci: Mis-aligned read\n");
@@ -1688,6 +1730,7 @@ static void ohci_mem_write(void *opaque,
 {
     OHCIState *ohci = opaque;
 
+    trace_ohci_mem_write(ohci, addr, val, size);
     /* Only aligned reads are allowed on OHCI */
     if (addr & 3) {
         fprintf(stderr, "usb-ohci: Mis-aligned write\n");
@@ -1743,7 +1786,6 @@ static void ohci_mem_write(void *opaque,
 	{
 		/* TODO: rescan all */
 		uint32_t v = val & OHCI_EDPTR_MASK;
-		ohci_mtrace_ctrl_rescan(ohci, v);
         ohci->ctrl_head = v;
         break;
 	}
@@ -1935,9 +1977,11 @@ static int ohci_init_pxa(SysBusDevice *dev)
     sysbus_init_irq(dev, &s->ohci.irq);
     sysbus_init_mmio(dev, &s->ohci.mem);
 
+#if defined(CONFIG_TRACE_MEMORY)
 	/* TODO: read typeinfo's name */
-	s->ohci.mtrace_id = mtrace_register_dev("sysbus-ohci", 1);
+	s->ohci.mtrace_bulk = mtrace_register_dev("sysbus-ohci-bulk", 1);
     return 0;
+#endif
 }
 
 static Property ohci_pci_properties[] = {

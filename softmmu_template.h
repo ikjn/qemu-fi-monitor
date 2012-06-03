@@ -265,6 +265,7 @@ void glue(glue(glue(HELPER_PREFIX, st), SUFFIX), MMUSUFFIX)(ENV_PARAM
     int index;
 
     index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
+   
  redo:
     tlb_addr = env->tlb_table[mmu_idx][index].addr_write;
     if ((addr & TARGET_PAGE_MASK) == (tlb_addr & (TARGET_PAGE_MASK | TLB_INVALID_MASK))) {
@@ -295,7 +296,7 @@ void glue(glue(glue(HELPER_PREFIX, st), SUFFIX), MMUSUFFIX)(ENV_PARAM
             addend = env->tlb_table[mmu_idx][index].addend;
             glue(glue(st, SUFFIX), _raw)((uint8_t *)(intptr_t)
                                          (addr + addend), val);
-            mtrace_hook_write ((uint32_t)(addr), DATA_SIZE, (uint8_t*)&val);
+            mtrace_hook_write (addr + addend, DATA_SIZE, (uint8_t*)&val);
         }
     } else {
         /* the page is not in the TLB : fill it */
@@ -351,7 +352,7 @@ static void glue(glue(slow_st, SUFFIX), MMUSUFFIX)(ENV_PARAM
             uintptr_t addend = env->tlb_table[mmu_idx][index].addend;
             glue(glue(st, SUFFIX), _raw)((uint8_t *)(intptr_t)
                                          (addr + addend), val);
-            mtrace_hook_write ((uint32_t)(addr), DATA_SIZE, (uint8_t*)&val);
+            mtrace_hook_write ((uint32_t)(addr + addend), DATA_SIZE, (uint8_t*)&val);
         }
     } else {
         /* the page is not in the TLB : fill it */
