@@ -195,6 +195,7 @@ zlib="yes"
 guest_agent="yes"
 libiscsi=""
 coroutine=""
+fault_injection="no"
 
 # If this is a Linaro QEMU tarball then default the pkgversion
 # string to say so, so that we clearly distinguish ourselves
@@ -589,6 +590,8 @@ for opt do
   --enable-mtrace) mtrace="yes"
   ;;
   --with-trace-file=*) trace_file="$optarg"
+  ;;
+  --enable-fault-injection) fault_injection="yes"
   ;;
   --enable-gprof) gprof="yes"
   ;;
@@ -3030,6 +3033,7 @@ echo "OpenGL support    $opengl"
 echo "libiscsi support  $libiscsi"
 echo "build guest agent $guest_agent"
 echo "coroutine backend $coroutine_backend"
+echo "fault injection   $fault_injection"
 
 if test "$sdl_too_old" = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -3399,6 +3403,9 @@ fi
 echo "CONFIG_TRACE_FILE=$trace_file" >> $config_host_mak
 if test "$trace_default" = "yes"; then
   echo "CONFIG_TRACE_DEFAULT=y" >> $config_host_mak
+fi
+if test "$fault_injection" = "yes"; then
+  echo "CONFIG_FAULT_INJECTION=y" >> $config_host_mak
 fi
 
 # memory tracing
