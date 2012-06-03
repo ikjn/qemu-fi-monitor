@@ -9,6 +9,14 @@
 
 #define FI_ENABLE_MASK      0x00000001
 
+#define DEBUG_FI
+
+#if defined(DEBUG_FI)
+#define DPRINTF(fmt, ...) do { printf ("fi: " fmt, ##__VA_ARGS__); } while(0)
+#else
+#define DPRINTF(fmt, ...) do {} while(0)
+#endif
+
 struct fi_trigger_desc;
 struct fi_attr {
     uint32_t flags;
@@ -18,7 +26,8 @@ struct fi_attr {
     int (*should_fail)(struct fi_attr *attr);
     void (*show_status)(struct fi_attr *attr);
     /* stats */
-    uint32_t ntrig;
+    uint32_t ntrig; /* injected */
+    uint32_t ntries;    /* # of calls to should_fail */
 };
 
 static QLIST_HEAD (,fi_info) fi_list = QLIST_HEAD_INITIALIZER();
@@ -42,7 +51,7 @@ struct fi_trigger_desc {
     struct fi_attr*(*constructor)(struct fi_info *fi, struct fi_trigger_desc *desc, const QDict *qdict);
 };
 
-static int fi_trigger_rate_check(struct fi_attr *ptr)
+static int fi_trigger_rate_should_fail(struct fi_attr *ptr)
 {
     struct fi_attr_rate *attr = (struct fi_attr_rate*)ptr;
     int ret;
@@ -51,12 +60,11 @@ static int fi_trigger_rate_check(struct fi_attr *ptr)
         ret = 0;
     else if (attr->rate == 1)
         ret = 1;
-    else if ((ptr->ntrig % attr->rate) == 0)
+    else if ((ptr->ntries % attr->rate) == 0)
         ret = 1;
     else
         ret = 0;
     
-    trace_fi_trigger_rate_check(ptr->info, ret);
     return ret;
 }
 static void fi_trigger_rate_show(struct fi_attr *attr)
@@ -89,10 +97,14 @@ static struct fi_attr* trigger_rate_constructor(struct fi_info *fi,
     const char *opt2= qdict_get_try_str(qdict, "opt2");
 
     attr = (struct fi_attr_rate *)create_fi_attr(fi, desc, sizeof(*attr),
-                                    fi_trigger_rate_check, fi_trigger_rate_show);
+                                    fi_trigger_rate_should_fail, fi_trigger_rate_show);
+    if (!attr)
+        return NULL;
     attr->rate = opt1 ? (uint32_t)strtoul(opt1, NULL, 10) : 0;
     attr->maxcnt = opt2 ? (uint32_t)strtoul(opt2, NULL, 10) : 0;
 
+    DPRINTF ("rate trigger added: %u/%u\n", attr->rate, attr->maxcnt);
+    DPRINTF ("attr=%p, %p\n", attr, &attr->attr);
     return &attr->attr;
 }
 
@@ -176,6 +188,7 @@ int fi_should_fail(struct fi_info* fi)
             ret = 1;
             attr->ntrig++;
         }
+        attr->ntries++;
     }
 
     fi_unlock();
@@ -205,7 +218,12 @@ static int fi_cmd(struct fi_info *fi, const QDict *qdict)
                 if (!attr) {
                     break;
                 } else {
+                    DPRINTF ("add triger %p to fi %p, now fi has : ", attr, fi);
                     QLIST_INSERT_HEAD(&fi->attr_list, attr, link);
+                    QLIST_FOREACH(attr, &fi->attr_list, link) {
+                        DPRINTF ("%p ", attr);
+                    }
+                    DPRINTF ("\n");
                     return 0;
                 }
             }
