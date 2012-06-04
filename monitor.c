@@ -643,11 +643,11 @@ static void do_trace_event_set_state(Monitor *mon, const QDict *qdict)
 /* e.g., mtrace ohci-hcd on|off */
 static void do_mtrace(Monitor *mon, const QDict *qdict)
 {
-    const char *name = qdict_get_try_str(qdict, "name");
+    const char *devname = qdict_get_try_str(qdict, "devname");
+    const char *ctl = qdict_get_try_str(qdict, "op");
+    int on = ctl ? (strcmp(ctl, "on") ? 1 : 0) : -1;
 
-    if (mtrace_control(name, qdict_get_bool(qdict, "arg"))) {
-	    /* TODO: show error message */
-    }
+    mtrace_control(devname, on);
 }
 #endif
 

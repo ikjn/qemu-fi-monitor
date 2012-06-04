@@ -684,6 +684,8 @@ static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
                         int write, uint8_t *data)
 {
     struct ohci_mtrace_data *t= (struct ohci_mtrace_data*)reg;
+    DPRINTF1 ("ohci mtrace hooked: %x-%x --> %x-%x, flags=%x, write=%x\n",
+                reg->paddr, reg->size, paddr, size, t->flags, write);
     trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
 }
 
@@ -702,9 +704,9 @@ static struct ohci_mtrace_data* ohci_mtrace_register_edtd(void *dev, uint32_t ad
     data->reg.hook_callback = ohci_mtrace_callback_hook;
     data->flags = flags;
     mtrace_add_filter(dev, (struct mtrace_reg*)data);
+    //DPRINTF1 ("Add ohci filter: %x-%x (%s)\n", addr, 16, (flags == MTR_OHCI_ED) ? "ed" : "td");
 
     return data;
-
 }
 
 static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
@@ -712,43 +714,49 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
 	/* TODO: rescan all ctrl ed list */
     struct ohci_ed ed;
     struct ohci_td td;
-    uint32_t cur_ed, next_ed, cur_td, next_td, tail_td;
+    uint32_t cur_ed;
+    uint32_t cur_td, next_td, tail_td;
     int cnt;
-   
+  
+    //DPRINTF1 ("---------- Remove all ohci filters\n");
     cnt = mtrace_del_all(dev);
-    DPRINTF1 ("remove hook %d entries.\n", cnt);
 
     cnt = 0;
-    for (cur_ed = head; cur_ed; cur_ed = next_ed) {
+    cur_ed = head;
+    while (cur_ed) {
         if (!ohci_read_ed(ohci, cur_ed, &ed)) {
             fprintf(stderr, "ohci-mtrace: failed to read ed at %x\n", cur_ed);
             return;
         }
         
-        if ((ed.head & OHCI_ED_H) || (ed.flags & OHCI_ED_K))
-            continue;
-
-        DPRINTF1 ("dev %p add ed %x\n", dev, cur_ed);
-        ohci_mtrace_register_edtd(dev, cur_ed, MTR_OHCI_ED);
-        cnt++;
-
-        tail_td = ed.tail & OHCI_DPTR_MASK;
-        cur_td = ed.head & OHCI_DPTR_MASK;
-        for (; cur_td && cur_td != tail_td; cur_td = next_td) {
-            if (!ohci_read_td(ohci, cur_td, &td)) {
-                fprintf(stderr, "ohci-mtrace: failed to read td at %x\n", cur_td);
-                break;
-            }
-            DPRINTF1 ("dev %p add td %x\n", dev, cur_td);
-            ohci_mtrace_register_edtd(dev, cur_td, MTR_OHCI_TD);
+        if (!(ed.head & OHCI_ED_H) && !(ed.flags & OHCI_ED_K)) {
+            ohci_mtrace_register_edtd(dev, cur_ed, MTR_OHCI_ED);
             cnt++;
-            next_td = td.next & OHCI_DPTR_MASK;
-            if (next_td == cur_td) {
-                DPRINTF1 ("next_td = cur (%x). stop hook\n", cur_td);
-                break;
+
+            tail_td = ed.tail & OHCI_DPTR_MASK;
+            cur_td = ed.head & OHCI_DPTR_MASK;
+            
+            while (cur_td && cur_td != tail_td) {
+                if (!ohci_read_td(ohci, cur_td, &td)) {
+                    fprintf(stderr, "ohci-mtrace: failed to read td at %x\n", cur_td);
+                    break;
+                }
+                ohci_mtrace_register_edtd(dev, cur_td, MTR_OHCI_TD);
+               
+                cnt++;
+                next_td = td.next & OHCI_DPTR_MASK;
+                if (next_td == cur_td) {
+                    fprintf (stderr, "td link error! td link %x-%x\n", cur_td, next_td);
+                    break;
+                }
+                cur_td = next_td;
+            }
+            /* debug: add dummy td */
+            if (cur_td == tail_td) {
+                ohci_mtrace_register_edtd(dev, cur_td, MTR_OHCI_TD);
             }
         }
-        next_ed = ed.next & OHCI_DPTR_MASK;
+        cur_ed = ed.next & OHCI_DPTR_MASK;
     }
 
     DPRINTF ("add hook %d entries.\n", cnt);
