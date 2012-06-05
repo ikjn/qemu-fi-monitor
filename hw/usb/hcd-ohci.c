@@ -673,6 +673,7 @@ static void ohci_copy_iso_td(OHCIState *ohci,
 
 #define MTR_OHCI_ED           0x001
 #define MTR_OHCI_TD           0x002
+#define MTR_OHCI_BUF          0x003
 
 struct ohci_mtrace_data {
     struct mtrace_reg reg;
@@ -689,7 +690,7 @@ static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
     trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
 }
 
-static struct ohci_mtrace_data* ohci_mtrace_register_edtd(void *dev, uint32_t addr, uint32_t flags)
+static struct ohci_mtrace_data* ohci_mtrace_register(void *dev, uint32_t addr, uint32_t len, uint32_t flags)
 {
     struct ohci_mtrace_data *data;
 
@@ -700,13 +701,22 @@ static struct ohci_mtrace_data* ohci_mtrace_register_edtd(void *dev, uint32_t ad
     }
     memset(data, 0, sizeof(*data));
     data->reg.paddr = addr;
-    data->reg.size = 16;
+    data->reg.size = len;
     data->reg.hook_callback = ohci_mtrace_callback_hook;
     data->flags = flags;
     mtrace_add_filter(dev, (struct mtrace_reg*)data);
-    //DPRINTF1 ("Add ohci filter: %x-%x (%s)\n", addr, 16, (flags == MTR_OHCI_ED) ? "ed" : "td");
+    DPRINTF1 ("Add ohci filter: %08x-%08x (%d)\n", addr, len, flags);
 
     return data;
+}
+
+static struct ohci_mtrace_data* ohci_mtrace_register_td(void *dev, uint32_t addr, uint32_t flags)
+{
+	return ohci_mtrace_register(dev, addr, 16, MTR_OHCI_TD);
+}
+static struct ohci_mtrace_data* ohci_mtrace_register_ed(void *dev, uint32_t addr, uint32_t flags)
+{
+	return ohci_mtrace_register(dev, addr, 16, MTR_OHCI_ED);
 }
 
 static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
@@ -718,7 +728,7 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
     uint32_t cur_td, next_td, tail_td;
     int cnt;
   
-    //DPRINTF1 ("---------- Remove all ohci filters\n");
+    DPRINTF1 ("---------- Remove all ohci filters\n");
     cnt = mtrace_del_all(dev);
 
     cnt = 0;
@@ -730,7 +740,7 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
         }
         
         if (!(ed.head & OHCI_ED_H) && !(ed.flags & OHCI_ED_K)) {
-            ohci_mtrace_register_edtd(dev, cur_ed, MTR_OHCI_ED);
+            ohci_mtrace_register_ed(dev, cur_ed, MTR_OHCI_ED);
             cnt++;
 
             tail_td = ed.tail & OHCI_DPTR_MASK;
@@ -741,7 +751,18 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
                     fprintf(stderr, "ohci-mtrace: failed to read td at %x\n", cur_td);
                     break;
                 }
-                ohci_mtrace_register_edtd(dev, cur_td, MTR_OHCI_TD);
+				/* td */
+                ohci_mtrace_register_td(dev, cur_td, MTR_OHCI_TD);
+			
+				/* buffer ptr */
+				if (td.cbp && td.be) {
+					uint32_t len;
+					if ((td.cbp & 0xfffff000) != (td.be & 0xfffff000))
+						len = (td.be & 0xfff) + 0x1001 - (td.cbp & 0xfff);
+					else
+						len = (td.be - td.cbp) + 1;
+					ohci_mtrace_register(dev, td.cbp, len, MTR_OHCI_BUF);
+				}
                
                 cnt++;
                 next_td = td.next & OHCI_DPTR_MASK;
@@ -751,9 +772,9 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
                 }
                 cur_td = next_td;
             }
-            /* debug: add dummy td */
+            /* XXX: dummy td is not touched by HC. debug purposed.*/
             if (cur_td == tail_td) {
-                ohci_mtrace_register_edtd(dev, cur_td, MTR_OHCI_TD);
+                ohci_mtrace_register_td(dev, cur_td, MTR_OHCI_TD);
             }
         }
         cur_ed = ed.next & OHCI_DPTR_MASK;
@@ -1306,6 +1327,7 @@ static void ohci_sof(OHCIState *ohci)
 /* Process Control and Bulk lists.  */
 static void ohci_process_lists(OHCIState *ohci, int completion)
 {
+	static unsigned int n = 0;
     if ((ohci->ctl & OHCI_CTL_CLE) && (ohci->status & OHCI_STATUS_CLF)) {
         if (ohci->ctrl_cur && ohci->ctrl_cur != ohci->ctrl_head) {
             DPRINTF("usb-ohci: head %x, cur %x\n",
@@ -1320,10 +1342,12 @@ static void ohci_process_lists(OHCIState *ohci, int completion)
 
     if ((ohci->ctl & OHCI_CTL_BLE) && (ohci->status & OHCI_STATUS_BLF)) {
         trace_ohci_process_lists(ohci, 1, ohci->bulk_head);
-        if (!ohci_service_ed_list(ohci, ohci->bulk_head, completion)) {
-            ohci->bulk_cur = 0;
-            ohci->status &= ~OHCI_STATUS_BLF;
-        }
+		if ((n++) & 7) {
+			if (!ohci_service_ed_list(ohci, ohci->bulk_head, completion)) {
+				ohci->bulk_cur = 0;
+				ohci->status &= ~OHCI_STATUS_BLF;
+			}
+		}
 #if defined(CONFIG_TRACE_MEMORY)
         ohci_mtrace_hook_bulklist(ohci);
 #endif
