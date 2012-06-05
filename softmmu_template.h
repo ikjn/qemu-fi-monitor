@@ -149,6 +149,18 @@ glue(glue(glue(HELPER_PREFIX, ld), SUFFIX), MMUSUFFIX)(ENV_PARAM
             addend = env->tlb_table[mmu_idx][index].addend;
             res = glue(glue(ld, USUFFIX), _raw)((uint8_t *)(intptr_t)
                                                 (addr + addend));
+#if defined(CONFIG_TRACE_MEMORY)
+            {
+                /* Note: addr + addend is host memory.
+                   We should translate addr to guest physical address
+                   XXX: is there more good method than this _xxx_debug function? */
+                target_phys_addr_t paddr = cpu_get_phys_page_debug(env, addr);
+                if (paddr != -1)
+                    if (mtrace_hook_read(paddr, DATA_SIZE)) {
+                        tlb_flush_page(env, addr);
+                    }
+            }
+#endif
         }
     } else {
         /* the page is not in the TLB : fill it */
@@ -296,6 +308,7 @@ void glue(glue(glue(HELPER_PREFIX, st), SUFFIX), MMUSUFFIX)(ENV_PARAM
             addend = env->tlb_table[mmu_idx][index].addend;
             glue(glue(st, SUFFIX), _raw)((uint8_t *)(intptr_t)
                                          (addr + addend), val);
+#if defined(CONFIG_TRACE_MEMORY)
             {
                 /* Note: addr + addend is host memory.
                    We should translate addr to guest physical address
@@ -306,6 +319,7 @@ void glue(glue(glue(HELPER_PREFIX, st), SUFFIX), MMUSUFFIX)(ENV_PARAM
                         tlb_flush_page(env, addr);
                     }
             }
+#endif
         }
     } else {
         /* the page is not in the TLB : fill it */
