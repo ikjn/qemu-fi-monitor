@@ -251,14 +251,14 @@ ETEXI
 #if defined(CONFIG_TRACE_MEMORY)
     {
         .name       = "mtrace",
-        .args_type  = "devname:s,op:b",
-        .params     = "devname on|off",
+        .args_type  = "devname:s,op:s?",
+        .params     = "devname [on|off]",
         .help       = "activate memory tracer.",
         .mhandler.cmd = do_mtrace,
     },
 
 STEXI
-@item mtrace devname  on|off
+@item mtrace
 @findex mtrace
 Activate memory tracing of the specified device to trace-backend.
 ETEXI

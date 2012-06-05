@@ -1,276 +1,270 @@
-//#include "mtrace.h"
+#include "mtrace.h"
 #include "qlist.h"
 #include "trace.h"
 #include "mtrace.h"
 #include "osdep.h"
+#include "qemu-thread.h"
+
+#define MTRACE_DEBUG
+#if defined(MTRACE_DEBUG)
+#define DPRINTF(fmt, ...) do { printf("mtrace: " fmt,##__VA_ARGS__); } while(0)
+#else
+#define DPRINTF(fmt, ...)
+#endif
 
 struct mtrace_dev {
 	char name[32];
-	uint8_t devid;
 	int state;
-	QLIST_HEAD (, mtrace_addr) addr_list;
-	QLIST_ENTRY (mtrace_dev) dev_next;
-};
-
-struct mtrace_addr {
-	struct mtrace_reg reg;
-	struct mtrace_dev *dev;
-	QLIST_ENTRY(mtrace_addr) addr_next;
-	QLIST_ENTRY(mtrace_addr) dev_next;
+	QLIST_HEAD (, mtrace_reg) reg_list;
+	QLIST_ENTRY (mtrace_dev) link;
 };
 
 static QLIST_HEAD(,mtrace_dev) devlist;
-static struct mtrace_dev *devhash[256];
-static unsigned int cur_devid = 0;
+static QemuMutex lock;
 
 /* addr hash table mgmt. */
 struct mtrace_hash_entry {
-	QLIST_HEAD(, mtrace_addr) addr_list;
+	QLIST_HEAD(, mtrace_reg) reg_list;
 };
-static struct mtrace_hash_entry addr_hash_tbl[1024];
-
+static struct mtrace_hash_entry reg_hash_tbl[1024];
 
 static void mtrace_lock(void)
 {
+    qemu_mutex_lock(&lock);
 }
 
 static void mtrace_unlock(void)
 {
+    qemu_mutex_unlock(&lock);
 }
 
 static int mtrace_inited = 0;
-static void mtrace_init(void)
+void mtrace_init(void)
 {
 	int i;
-	/* lock init */
+
+    if (mtrace_inited)	
+        return;
+    
+    qemu_mutex_init(&lock);
+
 	QLIST_INIT(&devlist);
-	cur_devid = 0;
-	memset(devhash, 0, sizeof(devhash));
-	for (i=0; i<ARRAY_SIZE(addr_hash_tbl); i++)
-		QLIST_INIT(&addr_hash_tbl[i].addr_list);
+	
+    for (i=0; i<ARRAY_SIZE(reg_hash_tbl); i++)
+		QLIST_INIT(&reg_hash_tbl[i].reg_list);
 
+    DPRINTF("inited\n");
 	mtrace_inited = 1;
-}
-static void mtrace_reset(void)
-{
-	/* TODO */
-	/* for all devices: remove addr entries & callback */
-	/* init devlist */
-	/* init addr_hash_tbl */
+    
+#if defined(MTRACE_DEBUG)
+    {
+        void* dev = mtrace_register_dev("debug", 1);
+        struct mtrace_reg *reg = NULL;
+        DPRINTF ("debug1");
+        reg = g_malloc(sizeof(*reg));
+        memset(reg, 0, sizeof(*reg));
+        reg->paddr = 0x80000000;
+        reg->size = 16;
+        DPRINTF ("debug1");
+        mtrace_add_filter(dev, reg);
+        DPRINTF ("debug1");
+    }
+#endif
 }
 
-static int addr_hash(uint32_t v)
+static struct mtrace_dev* getdev_byname(const char *devname)
+{
+    struct mtrace_dev *dev;
+
+    if (!devname)
+        return NULL;
+
+    QLIST_FOREACH(dev, &devlist, link) {
+        if (!strcmp(dev->name, devname))
+            return dev;
+    }
+    return NULL;
+}
+
+static int reg_hash_value(uint32_t v)
 {
 	return (v >> 12) & 0x3ff;
 }
 
-static struct mtrace_hash_entry* addr_hash_get(uint32_t paddr)
+static struct mtrace_hash_entry* reg_hash_get(uint32_t paddr)
 {
 	int hash;
 	struct mtrace_hash_entry *hentry;
 
-	hash = 	addr_hash(paddr);
-	hentry = &addr_hash_tbl[hash];
+	hash = 	reg_hash_value(paddr);
+	hentry = &reg_hash_tbl[hash];
 
 	return hentry;
 }
 
 /* insert new addr into hash table */
-static void addr_hash_insert(struct mtrace_addr *addr)
+static inline void reg_hash_insert(struct mtrace_reg *reg)
 {
 	struct mtrace_hash_entry *entry;
-	entry = addr_hash_get(addr->reg.paddr);
+	entry = reg_hash_get(reg->paddr);
 
-	QLIST_INSERT_HEAD(&entry->addr_list, addr, addr_next);
+	QLIST_INSERT_HEAD(&entry->reg_list, reg, hashlink);
 }
 
-static void insert_addr(struct mtrace_addr *addr)
+static inline void reg_remove(struct mtrace_reg *reg)
 {
-	struct mtrace_dev *dev = addr->dev;
-
-	addr_hash_insert(addr);
-	QLIST_INSERT_HEAD(&dev->addr_list, addr, dev_next);
+    QLIST_REMOVE(reg, hashlink);
+    QLIST_REMOVE(reg, devlink);
+    if (reg->del_callback)
+        reg->del_callback(reg);
+    else
+        g_free(reg);
 }
 
-static struct mtrace_addr* find_addr(uint32_t paddr, uint32_t size)
+static inline void reg_insert(struct mtrace_reg *reg)
 {
-	struct mtrace_hash_entry *entry = addr_hash_get(paddr);
-	struct mtrace_addr *addr;
+	struct mtrace_dev *dev = reg->dev;
+    reg_hash_insert(reg);
+    QLIST_INSERT_HEAD(&dev->reg_list, reg, devlink);
+}
 
-	if (QLIST_EMPTY(&entry->addr_list))
+static struct mtrace_reg* reg_find(uint32_t paddr, uint32_t size)
+{
+	struct mtrace_hash_entry *entry = reg_hash_get(paddr);
+	struct mtrace_reg *reg;
+
+	if (QLIST_EMPTY(&entry->reg_list))
 		return NULL;
 
-	QLIST_FOREACH(addr, &entry->addr_list, addr_next) {
-		if ((addr->reg.paddr + addr->reg.size) <= paddr)
+	QLIST_FOREACH(reg, &entry->reg_list, hashlink) {
+		if ((reg->paddr + reg->size) <= paddr)
 			continue;
-		if ((paddr+size) <= addr->reg.paddr)
+		if ((paddr + size) <= reg->paddr)
 			continue;
-		return addr;
+		return reg;
 	}
 
 	return NULL;
 }
 
-static uint8_t _mtrace_get_devid(const char *name)
+void mtrace_add_filter(void *dev, struct mtrace_reg *reg)
 {
-	struct mtrace_dev *dev;
-	
-	QLIST_FOREACH(dev, &devlist, dev_next) {
-		if (!strcmp(name, dev->name)) {
-			return dev->devid;
-		}
-	}
-
-	return (uint8_t)-1;
+	mtrace_lock();
+    reg->dev = dev;
+	reg_insert(reg);
+    
+#if 0
+    DPRINTF ("add hooking filter %x-%x\n", reg->paddr, reg->size);
+    /* TODO: cross page? */
+    /* TODO: flush tlb */
+    {
+        CPUArchState *env;
+        for (env = first_cpu; env != NULL; env = env->next_cpu) {
+            tlb_flush_page(env, reg->paddr);
+        }
+    }
+#endif
+	mtrace_unlock();
 }
 
-uint8_t mtrace_get_devid(const char *name)
+void mtrace_del_filter(struct mtrace_reg *reg)
 {
-	uint8_t ret;
-
 	mtrace_lock();
-
-	ret = _mtrace_get_devid(name);
+    
+    reg_remove(reg);
 
 	mtrace_unlock();
-
-	return ret;
 }
 
-static struct mtrace_dev* getdev_byid(int id)
+int mtrace_del_all(void *ptr)
 {
-	return devhash[id];
-}
+	struct mtrace_dev *dev = ptr;
+    struct mtrace_reg *tmp, *reg;
+    int cnt = 0;
 
-static struct mtrace_dev* getdev_byname(const char *devname)
-{
-	uint8_t devid = mtrace_get_devid(devname);
-	if (devid == (uint8_t)-1)
-		return NULL;
-	return getdev_byid(devid);
-}
+    mtrace_lock();
 
-void mtrace_add_filter(int devid, struct mtrace_reg *reg)
-{
-	/* add to monitor table */
-	struct mtrace_addr *addr;
-	struct mtrace_dev *dev;
-
-	mtrace_lock();
-	
-	dev = getdev_byid(devid);
-	if (!dev) {
-		trace_mtrace_add_filter("error: no device", reg->paddr, reg->size);
-		return;	/* TODO */
-	}
-
-	addr = g_malloc0(sizeof(*addr));
-	memcpy(&addr->reg, reg, sizeof(*reg));
-	addr->dev = dev;
-	insert_addr(addr);
-
-	mtrace_unlock();
-
-	trace_mtrace_add_filter(dev->name, reg->paddr, reg->size);
-}
-
-void mtrace_del_filter(int devid, uint32_t paddr, uint32_t size)
-{
-	struct mtrace_addr *addr;
-	struct mtrace_dev *dev;
-
-	dev = getdev_byid(devid);
-	if (dev)
-		trace_mtrace_del_filter(dev->name, paddr);
-
-	mtrace_lock();
-
-	addr = find_addr(paddr, 4);
-	if (!addr) {
-		goto err_del_filter;
-	}
-	
-	if (devid != dev->devid || dev != addr->dev) {
-		/* TODO */
-		goto err_del_filter;
-	}
-
-	QLIST_REMOVE(addr, addr_next);
-	QLIST_REMOVE(addr, dev_next);
-
-	addr->reg.del_callback(&addr->reg);
-	g_free(addr);
-
-err_del_filter:
-	/* TODO */
-	mtrace_unlock();
-
-}
-
-void mtrace_del_all(int devid)
-{
-	/* TODO */
+    if (!dev) {
+        fprintf (stderr, "mtrace: wrong dev info %p.\n", dev);
+        return cnt;
+    }
+    QLIST_FOREACH_SAFE(reg, &dev->reg_list, devlink, tmp) {
+        cnt++;
+        reg_remove(reg);
+    }
+    
+    //DPRINTF ("---------- remove all filters\n");
+    mtrace_unlock();
+    return cnt;
 }
 
 /* TODO: get cpu state information (pc, stack frame) */
-static void mtrace_hook_access(uint32_t paddr, uint32_t size, int write)
+static int mtrace_hook_access(uint32_t paddr, uint32_t size,
+                                int write, uint8_t *data)
 {
-    struct mtrace_addr *addr;
+    struct mtrace_reg *reg;
+    struct mtrace_dev *dev;
+    int ret = 0;
 
     mtrace_lock();
    
-	if (paddr & 3) {
-   		/* TODO: it's critical, check unaligned access */ 
-    	mtrace_unlock();
-		return;
-	}
-    addr = find_addr(paddr, size);
-    if (addr && addr->dev->state) {
-		/* XXX: too verbose, consider to remove this line */
-		trace_mtrace_hook_access(addr->dev->name, paddr, size, write);
-		addr->reg.hook_callback(&addr->reg, paddr, size);
+    /* XXX: performance critical part */
+    reg = reg_find(paddr, size);
+
+    if (unlikely(reg)) {
+        dev = (struct mtrace_dev *)reg->dev;
+        DPRINTF ("hook matched %x-%x!\n", paddr, size);
+        if (dev->state) {
+            if (likely(reg->hook_callback))
+                reg->hook_callback(reg, paddr, size, write, data);
+            ret = 1;
+        }
+    } else {
+        //DPRINTF ("hook %x-%x\n", paddr, size);
     }
 
     mtrace_unlock();
+
+    return ret;
 }
 
-void mtrace_hook_read(uint32_t paddr, uint32_t size)
+int mtrace_hook_read(uint32_t paddr, uint32_t size)
 {
-	mtrace_hook_access(paddr, size, 0);
+	return mtrace_hook_access(paddr, size, 0, NULL);
 }
 
-void mtrace_hook_write(uint32_t paddr, uint32_t size)
+int mtrace_hook_write(uint32_t paddr, uint32_t size, uint8_t *data)
 {
-	mtrace_hook_access(paddr, size, 0);
+    //DPRINTF ("hook write @ %x\n", paddr);
+	return mtrace_hook_access(paddr, size, 1, data);
 }
 
-int mtrace_register_dev(const char *name, int enable)
+void* mtrace_register_dev(const char *name, int enable)
 {
 	struct mtrace_dev *dev;
-	uint8_t devid;
 
-	mtrace_lock();
-
-	if (cur_devid < 256)
-		devid = cur_devid++;
-	else {
-		/* TODO */
-		mtrace_unlock();
-		return -1;
+	if (!mtrace_inited) {
+		mtrace_init();
 	}
+    
+	mtrace_lock();
 
 	dev = g_malloc0(sizeof(*dev));
 	strncpy(dev->name, name, sizeof(dev->name));
 	dev->state = enable;
-	devhash[devid] = dev;
-	QLIST_INIT(&dev->addr_list);
-	QLIST_INSERT_HEAD(&devlist, dev, dev_next);
+	QLIST_INIT(&dev->reg_list);
+	QLIST_INSERT_HEAD(&devlist, dev, link);
 
-	mtrace_unlock();
+    DPRINTF ("dev %s registered. state=%d\n", name, dev->state);
+   	mtrace_unlock();
 
-	trace_mtrace_register_dev(name, enable);
-	return dev->devid;
+	return dev;
 };
+
+int mtrace_unregister_dev(const char *name)
+{
+    return 0;
+}
 
 static void mtrace_dev_control(const char *devname, int enable)
 {
@@ -279,21 +273,30 @@ static void mtrace_dev_control(const char *devname, int enable)
 	mtrace_lock();
 
 	dev = getdev_byname(devname);
+
 	if (dev) {
-		dev->state = enable;
+        if (enable == -1) {
+            struct mtrace_reg *reg;
+	        QLIST_FOREACH(reg, &dev->reg_list, devlink) {
+                printf ("\t0x%08x, len=%d\n", reg->paddr, reg->size);
+            }
+        } else {
+		    dev->state = enable ? 1 : 0;
+        }
 	} else {
 		/* TODO */
+        fprintf (stderr, "dev %s is not registered.\n", devname);
 	}
 	
 	mtrace_unlock();
 }
 
-int mtrace_control(const char *devname, bool on)
+int mtrace_control(const char *devname, int on)
 {
 	if (!mtrace_inited) {
 		mtrace_init();
 	}
-	mtrace_dev_control(devname, on ? 1 : 0);
+	mtrace_dev_control(devname, on);
 	return 0;
 }
 

@@ -23,6 +23,7 @@
  */
 #include "qemu-timer.h"
 #include "memory.h"
+#include "trace/mtrace.h"
 
 #define DATA_SIZE (1 << SHIFT)
 
@@ -264,6 +265,7 @@ void glue(glue(glue(HELPER_PREFIX, st), SUFFIX), MMUSUFFIX)(ENV_PARAM
     int index;
 
     index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
+   
  redo:
     tlb_addr = env->tlb_table[mmu_idx][index].addr_write;
     if ((addr & TARGET_PAGE_MASK) == (tlb_addr & (TARGET_PAGE_MASK | TLB_INVALID_MASK))) {
@@ -294,6 +296,16 @@ void glue(glue(glue(HELPER_PREFIX, st), SUFFIX), MMUSUFFIX)(ENV_PARAM
             addend = env->tlb_table[mmu_idx][index].addend;
             glue(glue(st, SUFFIX), _raw)((uint8_t *)(intptr_t)
                                          (addr + addend), val);
+            {
+                /* Note: addr + addend is host memory.
+                   We should translate addr to guest physical address
+                   XXX: is there more good method than this _xxx_debug function? */
+                target_phys_addr_t paddr = cpu_get_phys_page_debug(env, addr);
+                if (paddr != -1)
+                    if (mtrace_hook_write (paddr, DATA_SIZE, (uint8_t*)&val)) {
+                        tlb_flush_page(env, addr);
+                    }
+            }
         }
     } else {
         /* the page is not in the TLB : fill it */
