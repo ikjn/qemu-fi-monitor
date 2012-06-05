@@ -58,6 +58,7 @@ static inline void cpu_physical_memory_read(target_phys_addr_t addr,
 {
     cpu_physical_memory_rw(addr, buf, len, 0);
 }
+void cpu_tlb_flush(uint32_t addr);
 static inline void cpu_physical_memory_write(target_phys_addr_t addr,
                                              const void *buf, int len)
 {

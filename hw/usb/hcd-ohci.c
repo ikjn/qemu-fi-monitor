@@ -33,7 +33,7 @@
 #include "hw/sysbus.h"
 #include "hw/qdev-addr.h"
 #include "trace.h"
-#include "trace/mtrace.h"
+#include "mtrace.h"
 
 //#define DEBUG_OHCI
 /* Dump packet contents.  */
@@ -674,6 +674,7 @@ static void ohci_copy_iso_td(OHCIState *ohci,
 #define MTR_OHCI_ED           0x001
 #define MTR_OHCI_TD           0x002
 #define MTR_OHCI_BUF          0x003
+#define MTR_OHCI_TD_DUMMY     0x002
 
 struct ohci_mtrace_data {
     struct mtrace_reg reg;
@@ -720,11 +721,13 @@ static struct ohci_mtrace_data* ohci_mtrace_register_ed(void *dev, uint32_t addr
 }
 static struct ohci_mtrace_data* ohci_mtrace_register_buf(void *dev, uint32_t addr, uint32_t len)
 {
+#if 0
 	static unsigned int acc = 0;
 	if ((acc & 0xfffff000) != ((acc + len) & 0xfffff000)) {
 		DPRINTF1 ("============== BULK Total %08x bytes monitored.\n", acc);
 	}
 	acc += len;
+#endif
 	return ohci_mtrace_register(dev, addr, len, MTR_OHCI_BUF);
 }
 static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
@@ -782,7 +785,7 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
             }
             /* XXX: dummy td is not touched by HC. debug purposed.*/
             if (cur_td == tail_td) {
-                ohci_mtrace_register_td(dev, cur_td);
+                ohci_mtrace_register(dev, cur_td, 16, MTR_OHCI_TD_DUMMY);
             }
         }
         cur_ed = ed.next & OHCI_DPTR_MASK;
@@ -1356,10 +1359,10 @@ static void ohci_process_lists(OHCIState *ohci, int completion)
 				ohci->bulk_cur = 0;
 				ohci->status &= ~OHCI_STATUS_BLF;
 			}
-		}
 #if defined(CONFIG_TRACE_MEMORY)
         ohci_mtrace_hook_bulklist(ohci);
 #endif
+		}
     }
 }
 
@@ -2020,7 +2023,7 @@ static int ohci_init_pxa(SysBusDevice *dev)
 
 #if defined(CONFIG_TRACE_MEMORY)
 	/* TODO: read typeinfo's name */
-	s->ohci.mtrace_bulk = mtrace_register_dev("sysbus-ohci-bulk", 1);
+	s->ohci.mtrace_bulk = mtrace_register_dev("ohci-bulk", 1);
     return 0;
 #endif
 }

@@ -63,7 +63,7 @@
 #include "trace/simple.h"
 #endif
 #ifdef CONFIG_TRACE_MEMORY
-#include "trace/mtrace.h"
+#include "mtrace.h"
 #endif
 #include "ui/qemu-spice.h"
 #include "memory.h"

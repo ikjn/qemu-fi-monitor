@@ -343,6 +343,15 @@ tb_page_addr_t get_page_addr_code(CPUArchState *env1, target_ulong addr)
     return qemu_ram_addr_from_host_nofail(p);
 }
 
+/* for mtrace */
+void cpu_tlb_flush(uint32_t paddr)
+{
+    CPUArchState *env;
+    for(env = first_cpu; env != NULL; env = env->next_cpu) {
+        tlb_flush_page(env, paddr);
+    }
+}
+
 #define MMUSUFFIX _cmmu
 #undef GETPC
 #define GETPC() ((uintptr_t)0)

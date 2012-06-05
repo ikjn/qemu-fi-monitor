@@ -328,6 +328,7 @@ hw-obj-$(CONFIG_DS1225Y) += ds1225y.o
 hw-obj-$(CONFIG_MIPSNET) += mipsnet.o
 
 hw-obj-y += qtest.o
+hw-obj-y += mtrace.o
 
 # Sound
 sound-obj-y =
@@ -436,8 +437,6 @@ trace-obj-$(CONFIG_TRACE_SIMPLE) += qemu-timer-common.o
 trace-nested-$(CONFIG_TRACE_STDERR) += stderr.o
 
 trace-nested-y += control.o
-
-trace-nested-$(CONFIG_TRACE_MEMORY) += mtrace.o
 
 trace-obj-y += $(addprefix trace/, $(trace-nested-y))
 

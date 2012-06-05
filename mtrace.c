@@ -149,19 +149,13 @@ void mtrace_add_filter(void *dev, struct mtrace_reg *reg)
 	mtrace_lock();
     reg->dev = dev;
 	reg_insert(reg);
+	uint32_t addr = reg->paddr;
     
-#if 0
-    DPRINTF ("add hooking filter %x-%x\n", reg->paddr, reg->size);
+    //DPRINTF ("add hooking filter %x-%x\n", reg->paddr, reg->size);
     /* TODO: cross page? */
-    /* TODO: flush tlb */
-    {
-        CPUArchState *env;
-        for (env = first_cpu; env != NULL; env = env->next_cpu) {
-            tlb_flush_page(env, reg->paddr);
-        }
-    }
-#endif
 	mtrace_unlock();
+
+	cpu_tlb_flush(addr);
 }
 
 void mtrace_del_filter(struct mtrace_reg *reg)

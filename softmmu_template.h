@@ -23,7 +23,7 @@
  */
 #include "qemu-timer.h"
 #include "memory.h"
-#include "trace/mtrace.h"
+#include "mtrace.h"
 
 #define DATA_SIZE (1 << SHIFT)
 
