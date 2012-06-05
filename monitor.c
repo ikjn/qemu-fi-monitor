@@ -645,7 +645,12 @@ static void do_mtrace(Monitor *mon, const QDict *qdict)
 {
     const char *devname = qdict_get_try_str(qdict, "devname");
     const char *ctl = qdict_get_try_str(qdict, "op");
-    int on = ctl ? (strcmp(ctl, "on") ? 1 : 0) : -1;
+    int on;
+
+	if (ctl)
+		on = strcmp(ctl, "on") ? 0 : 1;
+	else
+		on = -1;
 
     mtrace_control(devname, on);
 }

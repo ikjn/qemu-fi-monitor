@@ -210,8 +210,8 @@ static int mtrace_hook_access(uint32_t paddr, uint32_t size,
 
     if (unlikely(reg)) {
         dev = (struct mtrace_dev *)reg->dev;
-        DPRINTF ("hook matched %x-%x!\n", paddr, size);
         if (dev->state) {
+        	DPRINTF ("hook matched %x-%x %d!\n", paddr, size, write);
             if (likely(reg->hook_callback))
                 reg->hook_callback(reg, paddr, size, write, data);
             ret = 1;
@@ -279,6 +279,7 @@ static void mtrace_dev_control(const char *devname, int enable)
             }
         } else {
 		    dev->state = enable ? 1 : 0;
+			DPRINTF ("dev %s set state = %d\n", dev->name, dev->state);
         }
 	} else {
 		/* TODO */
