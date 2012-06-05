@@ -60,14 +60,11 @@ void mtrace_init(void)
     {
         void* dev = mtrace_register_dev("debug", 1);
         struct mtrace_reg *reg = NULL;
-        DPRINTF ("debug1");
         reg = g_malloc(sizeof(*reg));
         memset(reg, 0, sizeof(*reg));
         reg->paddr = 0x80000000;
         reg->size = 16;
-        DPRINTF ("debug1");
         mtrace_add_filter(dev, reg);
-        DPRINTF ("debug1");
     }
 #endif
 }
