@@ -34,6 +34,7 @@
 #include "hw/qdev-addr.h"
 #include "trace.h"
 #include "mtrace.h"
+#include "fi.h"
 
 //#define DEBUG_OHCI
 /* Dump packet contents.  */
@@ -116,6 +117,9 @@ typedef struct {
     int async_complete;
 #if defined(CONFIG_TRACE_MEMORY)
 	void* mtrace_bulk;
+#endif
+#if defined(CONFIG_FAULT_INJECTION)
+	struct fi_info *fi_hcr_late;
 #endif
 } OHCIState;
 
@@ -487,6 +491,12 @@ static void ohci_reset(void *opaque)
         ohci->async_td = 0;
     }
     DPRINTF("usb-ohci: Reset %s\n", ohci->name);
+
+#if defined(CONFIG_FAULT_INJECTION)
+	if (fi_should_fail(ohci->fi_hcr_late)) {
+		ohci->status |= OHCI_STATUS_HCR;
+	}
+#endif
 }
 
 /* Get an array of dwords from main memory */
@@ -1354,7 +1364,7 @@ static void ohci_process_lists(OHCIState *ohci, int completion)
 #endif
     if ((ohci->ctl & OHCI_CTL_BLE) && (ohci->status & OHCI_STATUS_BLF)) {
         trace_ohci_process_lists(ohci, 1, ohci->bulk_head);
-		if ((n++) & 7) {
+		if ((n++) & 7) {	/* XXX */
 			if (!ohci_service_ed_list(ohci, ohci->bulk_head, completion)) {
 				ohci->bulk_cur = 0;
 				ohci->status &= ~OHCI_STATUS_BLF;
@@ -1925,6 +1935,33 @@ static USBPortOps ohci_port_ops = {
 static USBBusOps ohci_bus_ops = {
 };
 
+#if defined(CONFIG_FAULT_INJECTION)	
+struct ohci_fi_desc {
+	const char *name;
+	const char *desc;
+};
+static struct ohci_fi_desc ohci_fi_desc[] = {
+	{
+		.name = "ohci-hcr-late",
+		.desc = "HCreset takes more than 30 usec (spec = 10usec)",
+	}
+};
+static void install_fi(OHCIState *ohci, struct fi_info **fi)
+{
+	int i;
+	for (i=0; i<ARRAY_SIZE(ohci_fi_desc); i++) {
+		struct ohci_fi_desc *desc;
+		desc = &ohci_fi_desc[i];
+		*fi = fi_create(desc->name, desc->desc, 1);
+		if (*fi) {
+			DPRINTF ("Fault %s injected. (entry=%p).\n", desc->name, *fi);
+		} else {
+			DPRINTF ("Fault %s injection failed.\n", desc->name);
+		}
+	}
+}
+#endif
+
 static int usb_ohci_init(OHCIState *ohci, DeviceState *dev,
                          int num_ports, uint32_t localmem_base,
                          char *masterbus, uint32_t firstport)
@@ -1975,7 +2012,9 @@ static int usb_ohci_init(OHCIState *ohci, DeviceState *dev,
 
     ohci->async_td = 0;
     qemu_register_reset(ohci_reset, ohci);
-
+#if defined(CONFIG_FAULT_INJECTION)	
+	install_fi(ohci, &ohci->fi_hcr_late);
+#endif
     return 0;
 }
 
