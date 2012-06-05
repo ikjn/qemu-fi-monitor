@@ -685,7 +685,7 @@ static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
                         int write, uint8_t *data)
 {
     struct ohci_mtrace_data *t= (struct ohci_mtrace_data*)reg;
-    DPRINTF1 ("ohci mtrace hooked: %x-%x --> %x-%x, flags=%x, write=%x\n",
+    DPRINTF1 ("***************** ohci mtrace hooked: %x-%x --> %x-%x, flags=%x, write=%x\n",
                 reg->paddr, reg->size, paddr, size, t->flags, write);
     trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
 }
@@ -705,20 +705,28 @@ static struct ohci_mtrace_data* ohci_mtrace_register(void *dev, uint32_t addr, u
     data->reg.hook_callback = ohci_mtrace_callback_hook;
     data->flags = flags;
     mtrace_add_filter(dev, (struct mtrace_reg*)data);
-    DPRINTF1 ("Add ohci filter: %08x-%08x (%d)\n", addr, len, flags);
+    //DPRINTF1 ("Add ohci filter: %08x-%08x (%d)\n", addr, len, flags);
 
     return data;
 }
 
-static struct ohci_mtrace_data* ohci_mtrace_register_td(void *dev, uint32_t addr, uint32_t flags)
+static struct ohci_mtrace_data* ohci_mtrace_register_td(void *dev, uint32_t addr)
 {
 	return ohci_mtrace_register(dev, addr, 16, MTR_OHCI_TD);
 }
-static struct ohci_mtrace_data* ohci_mtrace_register_ed(void *dev, uint32_t addr, uint32_t flags)
+static struct ohci_mtrace_data* ohci_mtrace_register_ed(void *dev, uint32_t addr)
 {
 	return ohci_mtrace_register(dev, addr, 16, MTR_OHCI_ED);
 }
-
+static struct ohci_mtrace_data* ohci_mtrace_register_buf(void *dev, uint32_t addr, uint32_t len)
+{
+	static unsigned int acc = 0;
+	if ((acc & 0xfffff000) != ((acc + len) & 0xfffff000)) {
+		DPRINTF1 ("============== BULK Total %08x bytes monitored.\n", acc);
+	}
+	acc += len;
+	return ohci_mtrace_register(dev, addr, len, MTR_OHCI_BUF);
+}
 static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
 {
 	/* TODO: rescan all ctrl ed list */
@@ -728,7 +736,7 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
     uint32_t cur_td, next_td, tail_td;
     int cnt;
   
-    DPRINTF1 ("---------- Remove all ohci filters\n");
+    //DPRINTF1 ("---------- Remove all ohci filters\n");
     cnt = mtrace_del_all(dev);
 
     cnt = 0;
@@ -740,7 +748,7 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
         }
         
         if (!(ed.head & OHCI_ED_H) && !(ed.flags & OHCI_ED_K)) {
-            ohci_mtrace_register_ed(dev, cur_ed, MTR_OHCI_ED);
+            ohci_mtrace_register_ed(dev, cur_ed);
             cnt++;
 
             tail_td = ed.tail & OHCI_DPTR_MASK;
@@ -752,7 +760,7 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
                     break;
                 }
 				/* td */
-                ohci_mtrace_register_td(dev, cur_td, MTR_OHCI_TD);
+                ohci_mtrace_register_td(dev, cur_td);
 			
 				/* buffer ptr */
 				if (td.cbp && td.be) {
@@ -761,7 +769,7 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
 						len = (td.be & 0xfff) + 0x1001 - (td.cbp & 0xfff);
 					else
 						len = (td.be - td.cbp) + 1;
-					ohci_mtrace_register(dev, td.cbp, len, MTR_OHCI_BUF);
+					ohci_mtrace_register_buf(dev, td.cbp, len);
 				}
                
                 cnt++;
@@ -774,13 +782,11 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
             }
             /* XXX: dummy td is not touched by HC. debug purposed.*/
             if (cur_td == tail_td) {
-                ohci_mtrace_register_td(dev, cur_td, MTR_OHCI_TD);
+                ohci_mtrace_register_td(dev, cur_td);
             }
         }
         cur_ed = ed.next & OHCI_DPTR_MASK;
     }
-
-    DPRINTF ("add hook %d entries.\n", cnt);
 }
 
 static void ohci_mtrace_hook_bulklist(OHCIState *ohci)
@@ -1340,6 +1346,9 @@ static void ohci_process_lists(OHCIState *ohci, int completion)
         }
     }
 
+#if defined(CONFIG_TRACE_MEMORY)
+        ohci_mtrace_hook_bulklist(ohci);
+#endif
     if ((ohci->ctl & OHCI_CTL_BLE) && (ohci->status & OHCI_STATUS_BLF)) {
         trace_ohci_process_lists(ohci, 1, ohci->bulk_head);
 		if ((n++) & 7) {
