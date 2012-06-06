@@ -349,8 +349,11 @@ void cpu_tlb_flush(uint32_t paddr)
     CPUArchState *env;
     for(env = first_cpu; env != NULL; env = env->next_cpu) {
 		/* XXX Note: how paddr can be translated to vaddr ? */
-#if 0
-        tlb_flush_page(env, paddr);
+        //tlb_flush_page(env, paddr);
+#if 1
+		/* it's so heavy */
+        tlb_flush(env, 1);
+		tb_flush(env);
 #else
 		tb_flush(env);	/* XXX: so much... heavy!! */
 #endif
