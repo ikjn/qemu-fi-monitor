@@ -27,6 +27,7 @@ struct mtrace_hash_entry {
 	QLIST_HEAD(, mtrace_reg) reg_list;
 };
 static struct mtrace_hash_entry reg_hash_tbl[1024];
+static uint32_t reg_cnt = 0;
 
 static void mtrace_lock(void)
 {
@@ -48,6 +49,7 @@ void mtrace_init(void)
     
     qemu_mutex_init(&lock);
 
+	reg_cnt = 0;
 	QLIST_INIT(&devlist);
 	
     for (i=0; i<ARRAY_SIZE(reg_hash_tbl); i++)
@@ -57,6 +59,7 @@ void mtrace_init(void)
 	mtrace_inited = 1;
     
 #if defined(MTRACE_DEBUG)
+#if 0
     {
         void* dev = mtrace_register_dev("debug", 1);
         struct mtrace_reg *reg = NULL;
@@ -66,6 +69,7 @@ void mtrace_init(void)
         reg->size = 16;
         mtrace_add_filter(dev, reg);
     }
+#endif
 #endif
 }
 
@@ -146,11 +150,10 @@ static struct mtrace_reg* reg_find(uint32_t paddr, uint32_t size)
 
 void mtrace_add_filter(void *dev, struct mtrace_reg *reg)
 {
-	uint32_t addr = reg->paddr;
-
 	mtrace_lock();
     reg->dev = dev;
 	reg_insert(reg);
+	reg_cnt++;
     
 	mtrace_unlock();
 }
@@ -160,6 +163,7 @@ void mtrace_del_filter(struct mtrace_reg *reg)
 	mtrace_lock();
     
     reg_remove(reg);
+	reg_cnt--;
 
 	mtrace_unlock();
 }
@@ -180,7 +184,8 @@ int mtrace_del_all(void *ptr)
         cnt++;
         reg_remove(reg);
     }
-    
+   
+   	reg_cnt -= cnt; 
     //DPRINTF ("---------- remove all filters\n");
     mtrace_unlock();
     return cnt;
@@ -195,7 +200,12 @@ static int mtrace_hook_access(uint32_t paddr, uint32_t size,
     int ret = 0;
 
     mtrace_lock();
-   
+
+  	if (reg_cnt < 1) {
+    	mtrace_unlock();
+		return 0;
+	}
+
     /* XXX: performance critical part */
     reg = reg_find(paddr, size);
 
