@@ -156,6 +156,10 @@ DEF_HELPER_2(shr_cc, i32, i32, i32)
 DEF_HELPER_2(sar_cc, i32, i32, i32)
 DEF_HELPER_2(ror_cc, i32, i32, i32)
 
+#if defined(CONFIG_TRACE_MEMORY)
+DEF_HELPER_5(mtrace_hook, void, env, i32, i32, i32, s32)
+#endif
+
 /* neon_helper.c */
 DEF_HELPER_3(neon_qadd_u8, i32, env, i32, i32)
 DEF_HELPER_3(neon_qadd_s8, i32, env, i32, i32)

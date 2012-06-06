@@ -468,3 +468,20 @@ uint32_t HELPER(ror_cc)(uint32_t x, uint32_t i)
         return ((uint32_t)x >> shift) | (x << (32 - shift));
     }
 }
+
+#if defined(CONFIG_TRACE_MEMORY)
+#include "mtrace.h"
+void HELPER(mtrace_hook)(CPUARMState *env, uint32_t addr,
+				uint32_t size, uint32_t ptr, int32_t write)
+{
+    target_phys_addr_t phys_addr;
+	phys_addr = cpu_get_phys_page_debug(env, addr);
+	if (phys_addr != (target_phys_addr_t)-1) {
+		if (!write)
+			mtrace_hook_read(phys_addr, size);
+		else
+			mtrace_hook_write(phys_addr, size, ptr);
+	}
+}
+#endif
+
