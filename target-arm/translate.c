@@ -775,6 +775,30 @@ static inline void gen_smc(CPUARMState *env, DisasContext *s)
     s->is_jmp = DISAS_SMC;
 }
 
+#if defined(CONFIG_TRACE_MEMORY)
+#define MTRACE_HOOK_READ(ADDR, SZ) \
+do { \
+	TCGv _size = tcg_const_i32(SZ); \
+	TCGv _iswrite = tcg_const_i32(0); \
+	TCGv _ptr = tcg_const_i32(0); \
+	gen_helper_mtrace_hook(cpu_env, ADDR, _size, _ptr, _iswrite); \
+    tcg_temp_free(_size); \
+    tcg_temp_free(_iswrite); \
+    tcg_temp_free(_ptr); \
+} while(0)
+#define MTRACE_HOOK_WRITE(ADDR, SZ, PTR) \
+do { \
+	TCGv _size = tcg_const_i32(SZ); \
+	TCGv _iswrite = tcg_const_i32(1); \
+	gen_helper_mtrace_hook(cpu_env, ADDR, _size, PTR, _iswrite); \
+    tcg_temp_free(_size); \
+    tcg_temp_free(_iswrite); \
+} while(0)
+#else
+#define MTRACE_HOOK_READ(ADDR, SZ)
+#define MTRACE_HOOK_WRITE(ADDR, SZ, PTR)
+#endif
+
 static inline TCGv gen_ld8s(TCGv addr, int index)
 {
     TCGv tmp = tcg_temp_new_i32();
@@ -802,12 +826,14 @@ static inline TCGv gen_ld16u(TCGv addr, int index)
 static inline TCGv gen_ld32(TCGv addr, int index)
 {
     TCGv tmp = tcg_temp_new_i32();
+	MTRACE_HOOK_READ(addr, 4);
     tcg_gen_qemu_ld32u(tmp, addr, index);
     return tmp;
 }
 static inline TCGv_i64 gen_ld64(TCGv addr, int index)
 {
     TCGv_i64 tmp = tcg_temp_new_i64();
+	MTRACE_HOOK_READ(addr, 8);
     tcg_gen_qemu_ld64(tmp, addr, index);
     return tmp;
 }
@@ -824,6 +850,7 @@ static inline void gen_st16(TCGv val, TCGv addr, int index)
 static inline void gen_st32(TCGv val, TCGv addr, int index)
 {
     tcg_gen_qemu_st32(val, addr, index);
+	MTRACE_HOOK_WRITE(addr, 4, val);
     tcg_temp_free_i32(val);
 }
 static inline void gen_st64(TCGv_i64 val, TCGv addr, int index)

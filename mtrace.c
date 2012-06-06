@@ -152,10 +152,6 @@ void mtrace_add_filter(void *dev, struct mtrace_reg *reg)
     reg->dev = dev;
 	reg_insert(reg);
     
-    //DPRINTF ("add hooking filter %x-%x\n", reg->paddr, reg->size);
-    /* TODO: cross page? */
-	cpu_tlb_flush(addr);
-
 	mtrace_unlock();
 }
 
