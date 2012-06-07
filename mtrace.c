@@ -192,7 +192,7 @@ int mtrace_del_all(void *ptr)
 }
 
 /* TODO: get cpu state information (pc, stack frame) */
-static int mtrace_hook_access(uint32_t paddr, uint32_t size,
+static int mtrace_hook_access(uintptr_t pc, uint32_t paddr, uint32_t size,
                                 int write, uint8_t *data)
 {
     struct mtrace_reg *reg;
@@ -214,7 +214,7 @@ static int mtrace_hook_access(uint32_t paddr, uint32_t size,
         if (dev->state) {
         	//DPRINTF ("hook matched %x-%x %d!\n", paddr, size, write);
             if (likely(reg->hook_callback))
-                reg->hook_callback(reg, paddr, size, write, data);
+                reg->hook_callback(reg, pc, paddr, size, write, data);
             ret = 1;
         }
     } else {
@@ -226,15 +226,15 @@ static int mtrace_hook_access(uint32_t paddr, uint32_t size,
     return ret;
 }
 
-int mtrace_hook_read(uint32_t paddr, uint32_t size)
+int mtrace_hook_read(uintptr_t pc, uint32_t paddr, uint32_t size)
 {
-	return mtrace_hook_access(paddr, size, 0, NULL);
+	return mtrace_hook_access(pc, paddr, size, 0, NULL);
 }
 
-int mtrace_hook_write(uint32_t paddr, uint32_t size, uint8_t *data)
+int mtrace_hook_write(uintptr_t pc, uint32_t paddr, uint32_t size, uint8_t *data)
 {
     //DPRINTF ("hook write @ %x\n", paddr);
-	return mtrace_hook_access(paddr, size, 1, data);
+	return mtrace_hook_access(pc, paddr, size, 1, data);
 }
 
 void* mtrace_register_dev(const char *name, int enable)

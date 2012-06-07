@@ -691,14 +691,14 @@ struct ohci_mtrace_data {
     uint32_t flags;
 };
 
-static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
+static void ohci_mtrace_callback_hook(struct mtrace_reg *reg, uintptr_t pc,
                         uint32_t paddr, uint32_t size,
                         int write, uint8_t *data)
 {
     struct ohci_mtrace_data *t= (struct ohci_mtrace_data*)reg;
 	if (t->flags == MTR_OHCI_BUF)
-    DPRINTF1 ("ohci mtrace buffer touched: %x-%x --> %x-%x, flags=%x, write=%x\n",
-                reg->paddr, reg->size, paddr, size, t->flags, write);
+    DPRINTF1 ("ohci mtrace buffer touched: pc=%x, %x-%x --> %x-%x, flags=%x, write=%x\n",
+                pc, reg->paddr, reg->size, paddr, size, t->flags, write);
     trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
 }
 
