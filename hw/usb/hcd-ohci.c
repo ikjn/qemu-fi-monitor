@@ -696,7 +696,8 @@ static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
                         int write, uint8_t *data)
 {
     struct ohci_mtrace_data *t= (struct ohci_mtrace_data*)reg;
-    DPRINTF1 ("***************** ohci mtrace hooked: %x-%x --> %x-%x, flags=%x, write=%x\n",
+	if (t->flags == MTR_OHCI_BUF)
+    DPRINTF1 ("ohci mtrace buffer touched: %x-%x --> %x-%x, flags=%x, write=%x\n",
                 reg->paddr, reg->size, paddr, size, t->flags, write);
     trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
 }
