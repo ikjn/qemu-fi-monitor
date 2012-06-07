@@ -691,14 +691,63 @@ struct ohci_mtrace_data {
     uint32_t flags;
 };
 
-static void ohci_mtrace_callback_hook(struct mtrace_reg *reg,
+static void ohci_mtrace_dump_list(OHCIState *ohci, void *dev, uint32_t head)
+{
+	/* TODO: rescan all ctrl ed list */
+    struct ohci_ed ed;
+    struct ohci_td td;
+    uint32_t cur_ed;
+    uint32_t cur_td, next_td, tail_td;
+  
+    cur_ed = head;
+    while (cur_ed) {
+        if (!ohci_read_ed(ohci, cur_ed, &ed)) {
+            fprintf(stderr, "ohci-mtrace: failed to read ed at %x\n", cur_ed);
+            return;
+        }
+        
+        if (!(ed.head & OHCI_ED_H) && !(ed.flags & OHCI_ED_K)) {
+			printf ("ED %08x : %08x %08x %08x %08x\n",
+				cur_ed, ed.flags, ed.tail, ed.head, ed.next);
+
+            tail_td = ed.tail & OHCI_DPTR_MASK;
+            cur_td = ed.head & OHCI_DPTR_MASK;
+            
+            while (cur_td) {
+                if (!ohci_read_td(ohci, cur_td, &td)) {
+                    fprintf(stderr, "ohci-mtrace: failed to read td at %x\n", cur_td);
+                    break;
+                }
+				/* td */
+				printf ("\tTD %08x: %08x %08x %08x %08x\n",
+					cur_td, td.flags, td.cbp, td.next, td.be);
+			
+                next_td = td.next & OHCI_DPTR_MASK;
+                if (next_td == cur_td) {
+                    fprintf (stderr, "td link error! td link %x-%x\n", cur_td, next_td);
+                    break;
+                }
+ 				if (cur_td == tail_td)
+					break;
+                else
+					cur_td = next_td;
+            }
+        }
+        cur_ed = ed.next & OHCI_DPTR_MASK;
+    }
+}
+
+static void ohci_mtrace_callback_hook(struct mtrace_reg *reg, uintptr_t pc,
                         uint32_t paddr, uint32_t size,
                         int write, uint8_t *data)
 {
     struct ohci_mtrace_data *t= (struct ohci_mtrace_data*)reg;
-    DPRINTF1 ("***************** ohci mtrace hooked: %x-%x --> %x-%x, flags=%x, write=%x\n",
-                reg->paddr, reg->size, paddr, size, t->flags, write);
+	OHCIState *s = (OHCIState *)mtrace_dev_priv(reg->dev);
+	if (t->flags == MTR_OHCI_BUF)
+    DPRINTF1 ("ohci mtrace buffer touched: pc=%x, %x-%x --> %x-%x, flags=%x, write=%x\n",
+                pc, reg->paddr, reg->size, paddr, size, t->flags, write);
     trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
+	ohci_mtrace_dump_list(s, reg->dev, s->bulk_head);
 }
 
 static struct ohci_mtrace_data* ohci_mtrace_register(void *dev, uint32_t addr, uint32_t len, uint32_t flags)
@@ -2062,7 +2111,7 @@ static int ohci_init_pxa(SysBusDevice *dev)
 
 #if defined(CONFIG_TRACE_MEMORY)
 	/* TODO: read typeinfo's name */
-	s->ohci.mtrace_bulk = mtrace_register_dev("ohci-bulk", 1);
+	s->ohci.mtrace_bulk = mtrace_register_dev("ohci-bulk", 1, s);
     return 0;
 #endif
 }
