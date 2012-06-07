@@ -24,8 +24,9 @@ int mtrace_del_all(void *dev);
 int mtrace_hook_read(uintptr_t pc, uint32_t paddr, uint32_t size);
 int mtrace_hook_write(uintptr_t pc, uint32_t paddr, uint32_t size, uint8_t *data);
 
-void* mtrace_register_dev(const char *name, int enable);
+void* mtrace_register_dev(const char *name, int enable, void *priv);
 int mtrace_unregister_dev(const char *name);
+void* mtrace_dev_priv(void *dev);
 int mtrace_control(const char *devname, int on);
 
 #endif

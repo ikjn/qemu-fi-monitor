@@ -10189,6 +10189,11 @@ static const char *cpu_mode_names[16] = {
   "???", "???", "???", "und", "???", "???", "???", "sys"
 };
 
+uintptr_t cpu_get_pc(CPUARMState *env)
+{
+	return (uintptr_t)env->regs[15];
+}
+
 void cpu_dump_state(CPUARMState *env, FILE *f, fprintf_function cpu_fprintf,
                     int flags)
 {

@@ -17,6 +17,7 @@ struct mtrace_dev {
 	int state;
 	QLIST_HEAD (, mtrace_reg) reg_list;
 	QLIST_ENTRY (mtrace_dev) link;
+	void* priv;
 };
 
 static QLIST_HEAD(,mtrace_dev) devlist;
@@ -163,6 +164,9 @@ void mtrace_del_filter(struct mtrace_reg *reg)
 	mtrace_lock();
     
     reg_remove(reg);
+	if (reg_cnt == 0 ) {
+		DPRINTF ("reg_cnt unbanlanced!!\n");
+	}
 	reg_cnt--;
 
 	mtrace_unlock();
@@ -185,6 +189,9 @@ int mtrace_del_all(void *ptr)
         reg_remove(reg);
     }
    
+	if (reg_cnt < cnt) {
+		DPRINTF ("reg count unbalanced (del_all: %d/%d)!!\n", reg_cnt, cnt);
+	}
    	reg_cnt -= cnt; 
     //DPRINTF ("---------- remove all filters\n");
     mtrace_unlock();
@@ -237,7 +244,12 @@ int mtrace_hook_write(uintptr_t pc, uint32_t paddr, uint32_t size, uint8_t *data
 	return mtrace_hook_access(pc, paddr, size, 1, data);
 }
 
-void* mtrace_register_dev(const char *name, int enable)
+void* mtrace_dev_priv(void *dev)
+{
+	struct mtrace_dev *d = (struct mtrace_dev *)dev;
+	return d->priv;
+}
+void* mtrace_register_dev(const char *name, int enable, void* priv)
 {
 	struct mtrace_dev *dev;
 
@@ -250,6 +262,7 @@ void* mtrace_register_dev(const char *name, int enable)
 	dev = g_malloc0(sizeof(*dev));
 	strncpy(dev->name, name, sizeof(dev->name));
 	dev->state = enable;
+	dev->priv = priv;
 	QLIST_INIT(&dev->reg_list);
 	QLIST_INSERT_HEAD(&devlist, dev, link);
 
@@ -275,6 +288,7 @@ static void mtrace_dev_control(const char *devname, int enable)
 	if (dev) {
         if (enable == -1) {
             struct mtrace_reg *reg;
+			printf ("Current %d entries registered.\n", reg_cnt);
 	        QLIST_FOREACH(reg, &dev->reg_list, devlink) {
                 printf ("\t0x%08x, len=%d\n", reg->paddr, reg->size);
             }
