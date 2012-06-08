@@ -6780,6 +6780,18 @@ static void disas_arm_insn(CPUARMState * env, DisasContext *s)
             }
             /* Otherwise PLD; v5TE+ */
             ARCH(5TE);
+			rn = (insn >> 16) & 0xf;
+			if (rn != 15) {
+				addr = load_reg(s, rn);
+				val = insn & 0xfff;
+				if (!(insn & (1<<23)))
+					val = -val;
+				if (val)
+					tcg_gen_addi_i32(addr, addr, val);
+				tcg_gen_andi_i32(addr, addr, 0xffffff20);
+				MTRACE_HOOK_READ(addr, 32);
+				tcg_temp_free_i32(addr);
+			}
             return;
         }
         if (((insn & 0x0f70f000) == 0x0450f000) ||
