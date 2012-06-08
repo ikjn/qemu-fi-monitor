@@ -40,6 +40,14 @@ static void mtrace_unlock(void)
     qemu_mutex_unlock(&lock);
 }
 
+#if defined(MTRACE_DEBUG_REG)
+static void debug_hook(struct mtrace_reg* reg, uintptr_t pc,
+                uint32_t paddr, uint32_t size, int write, uint8_t *data)
+{
+	printf ("debug callback %08x write %d size %x\n", paddr, write, size);
+}
+#endif
+
 static int mtrace_inited = 0;
 void mtrace_init(void)
 {
@@ -59,18 +67,17 @@ void mtrace_init(void)
     DPRINTF("inited\n");
 	mtrace_inited = 1;
     
-#if defined(MTRACE_DEBUG)
-#if 0
+#if defined(MTRACE_DEBUG_REG)
     {
-        void* dev = mtrace_register_dev("debug", 1);
+        void* dev = mtrace_register_dev("debug", 1, NULL);
         struct mtrace_reg *reg = NULL;
         reg = g_malloc(sizeof(*reg));
         memset(reg, 0, sizeof(*reg));
         reg->paddr = 0x80000000;
         reg->size = 16;
+		reg->hook_callback = debug_hook;
         mtrace_add_filter(dev, reg);
     }
-#endif
 #endif
 }
 
