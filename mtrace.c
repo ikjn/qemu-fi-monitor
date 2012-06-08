@@ -213,12 +213,11 @@ static int mtrace_hook_access(uintptr_t pc, uint32_t paddr, uint32_t size,
     struct mtrace_dev *dev;
     int ret = 0;
 
-    mtrace_lock();
-
   	if (reg_cnt < 1) {
-    	mtrace_unlock();
 		return 0;
 	}
+    
+	mtrace_lock();
 
     /* XXX: performance critical part */
     reg = reg_find(paddr, size);
