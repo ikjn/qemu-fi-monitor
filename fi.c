@@ -56,7 +56,7 @@ static int fi_trigger_rate_should_fail(struct fi_attr *ptr)
     struct fi_attr_rate *attr = (struct fi_attr_rate*)ptr;
     int ret;
     
-    if (attr->rate == 0 || (attr->maxcnt && ptr->ntrig > attr->maxcnt))
+    if (attr->rate == 0 || (attr->maxcnt && (ptr->ntrig > attr->maxcnt)))
         ret = 0;
     else if (attr->rate == 1)
         ret = 1;
