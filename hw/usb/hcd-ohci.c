@@ -691,7 +691,7 @@ struct ohci_mtrace_data {
     uint32_t flags;
 };
 
-static void ohci_mtrace_dump_list(OHCIState *ohci, void *dev, uint32_t head)
+static void ohci_mtrace_dump_list(OHCIState *ohci, uint32_t head)
 {
 	/* TODO: rescan all ctrl ed list */
     struct ohci_ed ed;
@@ -747,7 +747,7 @@ static void ohci_mtrace_callback_hook(struct mtrace_reg *reg, uintptr_t pc,
     DPRINTF1 ("ohci mtrace buffer touched: pc=%x, %x-%x --> %x-%x, flags=%x, write=%x\n",
                 pc, reg->paddr, reg->size, paddr, size, t->flags, write);
     trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
-	ohci_mtrace_dump_list(s, reg->dev, s->bulk_head);
+	ohci_mtrace_dump_list(s, s->bulk_head);
 }
 
 static struct ohci_mtrace_data* ohci_mtrace_register(void *dev, uint32_t addr, uint32_t len, uint32_t flags)
