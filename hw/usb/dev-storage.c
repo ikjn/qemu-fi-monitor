@@ -66,6 +66,7 @@ typedef struct {
     struct fi_info *fi_datain_stall;
     struct fi_info *fi_dataout_stall;
     struct fi_info *fi_dataout_crc;
+    struct fi_info *fi_datain_crc;
 #endif
 } MSDState;
 
@@ -233,6 +234,8 @@ static void usb_msd_transfer_data(SCSIRequest *req, uint32_t len)
             } else if (p->pid == USB_TOKEN_IN && s->mode == USB_MSDM_DATAIN) {
                 if (fi_should_fail(s->fi_datain_stall))
                     p->result = USB_RET_STALL;
+                else if (fi_should_fail(s->fi_datain_crc))
+                    p->result = USB_RET_CRC;
             }
 #endif
             usb_packet_complete(&s->dev, p);
@@ -500,8 +503,11 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
                 ret = p->result;
             }
 #if defined(CONFIG_FAULT_INJECTION)
-            if (ret >=0 && fi_should_fail(s->fi_datain_stall)) {
-                ret = USB_RET_STALL;
+            if (ret >=0) {
+				if (fi_should_fail(s->fi_datain_stall))
+                	ret = USB_RET_STALL;
+            	else if (fi_should_fail(s->fi_datain_crc))
+                	ret = USB_RET_CRC;
             } 
 #endif
             break;
@@ -558,7 +564,11 @@ static struct msd_fi_desc fi_dataout_stall = {
 };
 static struct msd_fi_desc fi_dataout_crc = {
     .name = "msd-dataout-crc",
-    .desc = "insert CRC error into DATAOUT packets (EC+1)",
+    .desc = "insert CRC error into DATAOUT packets",
+};
+static struct msd_fi_desc fi_datain_crc = {
+    .name = "msd-datain-crc",
+    .desc = "insert CRC error into DATAIN packets",
 };
 static inline void install_fi(struct fi_info** fi, struct msd_fi_desc *fi_desc)
 {
@@ -627,6 +637,7 @@ static int usb_msd_initfn(USBDevice *dev)
     install_fi(&s->fi_datain_stall, &fi_datain_stall);
     install_fi(&s->fi_dataout_stall, &fi_dataout_stall);
     install_fi(&s->fi_dataout_crc, &fi_dataout_crc);
+    install_fi(&s->fi_datain_crc, &fi_datain_crc);
 #endif
     return 0;
 }
