@@ -385,8 +385,14 @@ Object *object_new(const char *typename)
 
 void object_delete(Object *obj)
 {
+#if 0
     object_unref(obj);
     g_assert(obj->ref == 0);
+#else
+	object_unref(obj);
+	if (obj->ref > 0)
+		object_unref(obj);
+#endif
     g_free(obj);
 }
 
@@ -608,7 +614,12 @@ void object_ref(Object *obj)
 
 void object_unref(Object *obj)
 {
+#if 0
     g_assert(obj->ref > 0);
+#else
+	if (obj->ref == 0)
+		return;
+#endif
     obj->ref--;
 
     /* parent always holds a reference to its children */
