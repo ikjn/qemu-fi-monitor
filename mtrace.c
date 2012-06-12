@@ -1,3 +1,4 @@
+#include "qemu-common.h"
 #include "mtrace.h"
 #include "qlist.h"
 #include "trace.h"
@@ -206,12 +207,14 @@ int mtrace_del_all(void *ptr)
 }
 
 /* TODO: get cpu state information (pc, stack frame) */
-static int mtrace_hook_access(uintptr_t pc, uint32_t paddr, uint32_t size,
-                                int write, uint8_t *data)
+int mtrace_hook_access(void *e, uint32_t paddr, uint32_t size,
+                                int write, void* data)
 {
+	CPUArchState *env = e;
     struct mtrace_reg *reg;
     struct mtrace_dev *dev;
     int ret = 0;
+	uint32_t pc = cpu_get_pc(env);
 
   	if (reg_cnt < 1) {
 		return 0;
@@ -227,27 +230,22 @@ static int mtrace_hook_access(uintptr_t pc, uint32_t paddr, uint32_t size,
         if (dev->state) {
         	//DPRINTF ("hook matched %x-%x %d!\n", paddr, size, write);
             if (likely(reg->hook_callback))
-                reg->hook_callback(reg, pc, paddr, size, write, data);
-            ret = 1;
+                ret = reg->hook_callback(reg, pc, paddr, size, write, data);
+    		
+			mtrace_unlock();
+		
+			if (ret) {
+				env->exception_index = EXCP_DEBUG;
+				cpu_loop_exit(env);
+			}
+            return 1;
         }
     } else {
         //DPRINTF ("hook %x-%x\n", paddr, size);
     }
+	mtrace_unlock();
 
-    mtrace_unlock();
-
-    return ret;
-}
-
-int mtrace_hook_read(uintptr_t pc, uint32_t paddr, uint32_t size)
-{
-	return mtrace_hook_access(pc, paddr, size, 0, NULL);
-}
-
-int mtrace_hook_write(uintptr_t pc, uint32_t paddr, uint32_t size, uint8_t *data)
-{
-    //DPRINTF ("hook write @ %x\n", paddr);
-	return mtrace_hook_access(pc, paddr, size, 1, data);
+	return 0;
 }
 
 void* mtrace_dev_priv(void *dev)

@@ -328,7 +328,6 @@ hw-obj-$(CONFIG_DS1225Y) += ds1225y.o
 hw-obj-$(CONFIG_MIPSNET) += mipsnet.o
 
 hw-obj-y += qtest.o
-hw-obj-y += mtrace.o
 
 # Sound
 sound-obj-y =

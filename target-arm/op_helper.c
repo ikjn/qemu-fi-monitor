@@ -477,11 +477,7 @@ void HELPER(mtrace_hook)(CPUARMState *env, uint32_t addr,
     target_phys_addr_t phys_addr;
 	phys_addr = cpu_get_phys_page_debug(env, addr);
 	if (phys_addr != (target_phys_addr_t)-1) {
-		if (!write)
-			mtrace_hook_read(cpu_get_pc(env), phys_addr, size);
-		else
-			mtrace_hook_write(cpu_get_pc(env), phys_addr, size,
-						(uint8_t*)ptr);
+		mtrace_hook_access((env), phys_addr, size, write, (void*)ptr);
 	}
 }
 #endif

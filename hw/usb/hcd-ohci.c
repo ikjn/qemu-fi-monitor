@@ -36,7 +36,7 @@
 #include "mtrace.h"
 #include "fi.h"
 
-//#define DEBUG_OHCI
+#define DEBUG_OHCI
 /* Dump packet contents.  */
 //#define DEBUG_PACKET
 //#define DEBUG_ISOCH
@@ -737,17 +737,24 @@ static void ohci_mtrace_dump_list(OHCIState *ohci, uint32_t head)
     }
 }
 
-static void ohci_mtrace_callback_hook(struct mtrace_reg *reg, uintptr_t pc,
+static int ohci_mtrace_callback_hook(struct mtrace_reg *reg, uintptr_t pc,
                         uint32_t paddr, uint32_t size,
                         int write, uint8_t *data)
 {
     struct ohci_mtrace_data *t= (struct ohci_mtrace_data*)reg;
 	OHCIState *s = (OHCIState *)mtrace_dev_priv(reg->dev);
-	if (t->flags == MTR_OHCI_BUF)
-    DPRINTF1 ("ohci mtrace buffer touched: pc=%x, %x-%x --> %x-%x, flags=%x, write=%x\n",
-                pc, reg->paddr, reg->size, paddr, size, t->flags, write);
-    trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
-	ohci_mtrace_dump_list(s, s->bulk_head);
+    
+	trace_ohci_mtrace_callback_hook(t->flags, t->reg.paddr, paddr, size, write);
+
+	if (t->flags == MTR_OHCI_BUF) {
+    	DPRINTF1 ("ohci mtrace buffer touched!\n");
+		DPRINTF1 ("\tpc=%x, %x-%x --> %x-%x, flags=%x, write=%x\n",
+					pc, reg->paddr, reg->size, paddr, size, t->flags, write);
+		ohci_mtrace_dump_list(s, s->bulk_head);
+		return 1;
+	} else  {
+		return 0;
+	}
 }
 
 static struct ohci_mtrace_data* ohci_mtrace_register(void *dev, uint32_t addr, uint32_t len, uint32_t flags)
@@ -815,7 +822,8 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
 
             tail_td = ed.tail & OHCI_DPTR_MASK;
             cur_td = ed.head & OHCI_DPTR_MASK;
-            
+           
+		   	/* TODO: limit the numbers of tds */
             while (cur_td && cur_td != tail_td) {
                 if (!ohci_read_td(ohci, cur_td, &td)) {
                     fprintf(stderr, "ohci-mtrace: failed to read td at %x\n", cur_td);
@@ -836,10 +844,6 @@ static void ohci_mtrace_hook_list(OHCIState *ohci, void *dev, uint32_t head)
                
                 cnt++;
                 next_td = td.next & OHCI_DPTR_MASK;
-                if (next_td == cur_td) {
-                    fprintf (stderr, "td link error! td link %x-%x\n", cur_td, next_td);
-                    break;
-                }
                 cur_td = next_td;
             }
             /* XXX: dummy td is not touched by HC. debug purposed.*/
@@ -1682,6 +1686,7 @@ static void ohci_port_set_status(OHCIState *ohci, int portnum, uint32_t val)
 
     if (ohci_port_set_if_connected(ohci, portnum, val & OHCI_PORT_PRS)) {
         DPRINTF("usb-ohci: port %d: RESET\n", portnum);
+		ohci_mtrace_dump_list(ohci, ohci->bulk_head);
         usb_device_reset(port->port.dev);
         port->ctrl &= ~OHCI_PORT_PRS;
         /* ??? Should this also set OHCI_PORT_PESC.  */
