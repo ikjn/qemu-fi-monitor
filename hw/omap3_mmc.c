@@ -23,13 +23,14 @@
 #include "omap.h"
 #include "sd.h"
 #include "sysbus.h"
+#include "fi.h"
 
 /* debug levels:
    0 - no debug
    1 - print non-fatal errors
    2 - print out all commands in processing order
    3 - dump all register accesses and buffer management */
-#define MMC_DEBUG_LEVEL 0
+#define MMC_DEBUG_LEVEL 1
 
 #if MMC_DEBUG_LEVEL>0
 #define TRACE(fmt,...) fprintf(stderr, "%s: " fmt "\n", \
@@ -95,6 +96,12 @@ struct omap3_mmc_s
     int ddir;
     int transfer;
     int stop;
+#if defined(CONFIG_FAULT_INJECTION)
+	/* See OMAP34x TRM MMC Register Manual's STAT register */
+	struct fi_info *fi_dto;		/* Data Timeout Error */
+	struct fi_info *fi_dcrc;	/* Data CRC Error */
+	struct fi_info *fi_deb;		/* Data End Bit Error */
+#endif
 };
 
 /* Bit names for STAT/IC/IE registers */
@@ -205,8 +212,27 @@ static void omap3_mmc_fifolevel_update(struct omap3_mmc_s *host)
                     if (host->fifo_len * 4 == (host->blk & 0x7ff)) { /* BLEN */
                         if (host->stop)
                             state = aborted;
-                        else
+                        else {
+#if defined(CONFIG_FAULT_INJECTION)
+							int err_idx = 0;
+							if (fi_should_fail(host->fi_dto)) {
+								host->stat |= STAT_DTO;
+								err_idx = 1;
+							} else if (fi_should_fail(host->fi_dcrc)) {
+								host->stat |= STAT_DCRC;
+								err_idx = 1;
+							} else if (fi_should_fail(host->fi_deb)) {
+								host->stat |= STAT_DEB;
+								err_idx = 1;
+							}
+							if (err_idx) {
+								/* error injection into last byte */
+								err_idx = (host->fifo_start + host->fifo_len - 1) & 0xff;
+								host->fifo[err_idx] ^= 0xff;
+							}
+#endif
                             qemu_irq_raise(host->dma[1]);
+						}
                     } else
                         qemu_irq_lower(host->dma[1]);
                 } else {
@@ -754,6 +780,24 @@ static const MemoryRegionOps omap3_mmc_ops = {
 static int omap3_mmc_init(SysBusDevice *dev)
 {
     struct omap3_mmc_s *s = FROM_SYSBUS(struct omap3_mmc_s, dev);
+#if defined(CONFIG_FAULT_INJECTION)
+	DeviceState *ds = DEVICE(s);
+	char name[3][32];
+	const char *desc[3] = {
+		"Data Timeout Error",
+		"Data CRC Error",
+		"Data End Bit Error",
+	};
+	snprintf(name[0], sizeof(name[0]), "%s-dto", ds->id);
+	snprintf(name[1], sizeof(name[1]), "%s-dcrc", ds->id);
+	snprintf(name[2], sizeof(name[2]), "%s-deb", ds->id);
+	s->fi_dto	= fi_create(name[0], desc[0], 1);
+	s->fi_dcrc	= fi_create(name[1], desc[1], 1);
+	s->fi_deb	= fi_create(name[2], desc[2], 1);
+	TRACE ("%s fault installed.", name[0]);
+	TRACE ("%s fault installed.", name[1]);
+	TRACE ("%s fault installed.", name[2]);
+#endif
     sysbus_init_irq(dev, &s->irq);
     sysbus_init_irq(dev, &s->dma[0]);
     sysbus_init_irq(dev, &s->dma[1]);
