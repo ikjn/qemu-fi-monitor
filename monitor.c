@@ -69,6 +69,9 @@
 #include "memory.h"
 #include "qmp-commands.h"
 #include "hmp.h"
+#if defined(CONFIG_FAULT_INJECTION)
+#include "fi.h"
+#endif
 
 /* for pic/irq_info */
 #if defined(TARGET_SPARC)
@@ -2625,6 +2628,15 @@ static mon_cmd_t info_cmds[] = {
         .help       = "show available trace-events & their state",
         .mhandler.info = do_trace_print_events,
     },
+#if defined(CONFIG_FAULT_INJECTION)
+	{
+		.name		= "fi",
+		.args_type	= "",
+		.params		= "",
+		.help		= "show available fault injection scheme",
+		.mhandler.info = do_info_fi,
+	},
+#endif
     {
         .name       = NULL,
     },

@@ -1432,6 +1432,8 @@ show device tree
 show qdev device model list
 @item info roms
 show roms
+@item info fi
+show fault scheme list
 @end table
 ETEXI
 

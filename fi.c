@@ -141,7 +141,7 @@ struct fi_info* fi_create(const char *name, const char *desc, int reg)
     if (!fi)
         return NULL;
     fi_init(fi);
-    fi->name = name;
+    strncpy(fi->name, name, sizeof(fi->name));
     fi->desc = desc;
     if (reg) {
         if (fi_register(fi)) {
@@ -266,3 +266,12 @@ void do_fi(Monitor *mon, const QDict *qdict)
     fi_unlock();
 }
 
+void do_info_fi(Monitor *mon)
+{
+	struct fi_info *fi;
+    fi_lock();
+	monitor_printf(mon, "Registered fault schemes:\n");
+    QLIST_FOREACH(fi, &fi_list, link) {
+		monitor_printf(mon, "fault %s: %s\n", fi->name, fi->desc);
+	}
+}
