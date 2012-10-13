@@ -30,6 +30,7 @@
 #include "qemu-queue.h"
 #include "sysemu.h"
 #include "iov.h"
+#include "fi.h"
 
 /*#define TRAFFIC_DEBUG*/
 /* Thanks to NetChip Technologies for donating this product ID.
@@ -643,6 +644,12 @@ typedef struct USBNetState {
     NICState *nic;
     NICConf conf;
     QTAILQ_HEAD(rndis_resp_head, rndis_response) rndis_resp;
+#if defined(CONFIG_FAULT_INJECTION)
+	struct fi_info *fi_statusin;
+	struct fi_info *fi_dataout;
+	struct fi_info *fi_datain;
+#define FAULT_RET USB_RET_STALL
+#endif
 } USBNetState;
 
 static int is_rndis(USBNetState *s)
@@ -1213,10 +1220,20 @@ static int usb_net_handle_data(USBDevice *dev, USBPacket *p)
         switch (p->ep->nr) {
         case 1:
             ret = usb_net_handle_statusin(s, p);
+#if defined(CONFIG_FAULT_INJECTION)
+			if (fi_should_fail(s->fi_statusin)) {
+				ret = FAULT_RET;
+			}
+#endif
             break;
 
         case 2:
             ret = usb_net_handle_datain(s, p);
+#if defined(CONFIG_FAULT_INJECTION)
+			if (fi_should_fail(s->fi_datain)) {
+				ret = FAULT_RET;
+			}
+#endif
             break;
 
         default:
@@ -1228,6 +1245,11 @@ static int usb_net_handle_data(USBDevice *dev, USBPacket *p)
         switch (p->ep->nr) {
         case 2:
             ret = usb_net_handle_dataout(s, p);
+#if defined(CONFIG_FAULT_INJECTION)
+			if (fi_should_fail(s->fi_dataout)) {
+				ret = FAULT_RET;
+			}
+#endif
             break;
 
         default:
@@ -1320,10 +1342,38 @@ static NetClientInfo net_usbnet_info = {
     .cleanup = usbnet_cleanup,
 };
 
+#if defined(CONFIG_FAULT_INJECTION)
+struct fi_desc {
+	const char *name;
+	const char *desc;
+};
+static struct fi_desc fi_statusin = {
+	.name = "usbnet-statusin",
+	.desc = "...",
+};
+static struct fi_desc fi_datain = {
+	.name = "usbnet-datain",
+	.desc = "...",
+};
+static struct fi_desc fi_dataout = {
+	.name = "usbnet-dataout",
+	.desc = "...",
+};
+static inline void install_fi(struct fi_info** fi, struct fi_desc *fi_desc)
+{
+	*fi = fi_create(fi_desc->name, fi_desc->desc, 1);
+}
+#endif
+
 static int usb_net_initfn(USBDevice *dev)
 {
     USBNetState *s = DO_UPCAST(USBNetState, dev, dev);
 
+#if defined(CONFIG_FAULT_INJECTION)
+	install_fi(&s->fi_statusin, &fi_statusin);
+	install_fi(&s->fi_datain, &fi_datain);
+	install_fi(&s->fi_dataout, &fi_dataout);
+#endif
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
 

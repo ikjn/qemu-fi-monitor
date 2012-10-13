@@ -44,6 +44,7 @@
 #define USB_RET_BABBLE  (-4)
 #define USB_RET_IOERROR (-5)
 #define USB_RET_ASYNC   (-6)
+#define USB_RET_CRC     (-7)
 
 #define USB_SPEED_LOW   0
 #define USB_SPEED_FULL  1

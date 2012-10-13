@@ -605,7 +605,12 @@ void object_ref(Object *obj)
 
 void object_unref(Object *obj)
 {
+#if 0
     g_assert(obj->ref > 0);
+#else
+	if (obj->ref == 0)
+		return;
+#endif
     obj->ref--;
 
     /* parent always holds a reference to its children */

@@ -248,6 +248,22 @@ Open, close, or flush the trace file.  If no argument is given, the status of th
 ETEXI
 #endif
 
+#if defined(CONFIG_TRACE_MEMORY)
+    {
+        .name       = "mtrace",
+        .args_type  = "devname:s,op:s?",
+        .params     = "devname [on|off]",
+        .help       = "activate memory tracer.",
+        .mhandler.cmd = do_mtrace,
+    },
+
+STEXI
+@item mtrace
+@findex mtrace
+Activate memory tracing of the specified device to trace-backend.
+ETEXI
+#endif
+
     {
         .name       = "log",
         .args_type  = "items:s",
@@ -1376,6 +1392,21 @@ passed since 1970, i.e. unix epoch.
 
 @end table
 ETEXI
+#ifdef CONFIG_FAULT_INJECTION
+    {
+        .name       = "fi",
+        .args_type  = "fault:s,trigger:s?,command:s?,opt1:s?,opt2:s? opt3:s?",
+        .params     = "fault-name [trigger [on|off] [opt1] [opt2] [opt3]]",
+        .help       = "activate fault injection",
+        .mhandler.cmd = do_fi,
+    },
+
+STEXI
+@item fi fault-name [trigger [on|off] [option]]
+@findex fi
+Activate an fault.
+ETEXI
+#endif
 
     {
         .name       = "info",
@@ -1463,6 +1494,8 @@ show device tree
 show qdev device model list
 @item info roms
 show roms
+@item info fi
+show fault scheme list
 @end table
 ETEXI
 

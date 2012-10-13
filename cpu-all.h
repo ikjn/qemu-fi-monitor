@@ -368,6 +368,7 @@ CPUArchState *qemu_get_cpu(int cpu);
 
 #define CPU_DUMP_CODE 0x00010000
 
+uintptr_t cpu_get_pc(CPUArchState *env);
 void cpu_dump_state(CPUArchState *env, FILE *f, fprintf_function cpu_fprintf,
                     int flags);
 void cpu_dump_statistics(CPUArchState *env, FILE *f, fprintf_function cpu_fprintf,

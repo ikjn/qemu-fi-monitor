@@ -17,6 +17,7 @@
 #include "monitor.h"
 #include "sysemu.h"
 #include "blockdev.h"
+#include "fi.h"
 
 //#define DEBUG_MSD
 
@@ -60,6 +61,12 @@ typedef struct {
     uint32_t removable;
     /* For async completion.  */
     USBPacket *packet;
+#if defined(CONFIG_FAULT_INJECTION)
+    struct fi_info *fi_datain_stall;
+    struct fi_info *fi_dataout_stall;
+    struct fi_info *fi_dataout_crc;
+    struct fi_info *fi_datain_crc;
+#endif
 } MSDState;
 
 struct usb_msd_cbw {
@@ -224,7 +231,25 @@ static void usb_msd_transfer_data(SCSIRequest *req, uint32_t len)
         usb_msd_copy_data(s, p);
         p = s->packet;
         if (p && p->result == p->iov.size) {
-            usb_msd_packet_complete(s);
+            /* Set s->packet to NULL before calling usb_packet_complete
+               because another request may be issued before
+               usb_packet_complete returns.  */
+            DPRINTF("Packet complete %p\n", p);
+            s->packet = NULL;
+#if defined(CONFIG_FAULT_INJECTION)
+            if (p->pid == USB_TOKEN_OUT && s->mode== USB_MSDM_DATAOUT) {
+                if (fi_should_fail(s->fi_dataout_stall))
+                    p->result = USB_RET_STALL;
+                else if (fi_should_fail(s->fi_dataout_crc))
+                    p->result = USB_RET_CRC;
+            } else if (p->pid == USB_TOKEN_IN && s->mode == USB_MSDM_DATAIN) {
+                if (fi_should_fail(s->fi_datain_stall))
+                    p->result = USB_RET_STALL;
+                else if (fi_should_fail(s->fi_datain_crc))
+                    p->result = USB_RET_CRC;
+            }
+#endif
+            usb_packet_complete(&s->dev, p);
         }
     }
 }
@@ -397,7 +422,7 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
             break;
 
         case USB_MSDM_DATAOUT:
-            DPRINTF("Data out %zd/%d\n", p->iov.size, s->data_len);
+            DPRINTF("Data out %zd/%d %d\n", p->iov.size, s->data_len, p->result);
             if (p->iov.size > s->data_len) {
                 goto fail;
             }
@@ -411,6 +436,7 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
                     usb_packet_skip(p, len);
                     s->data_len -= len;
                     if (s->data_len == 0) {
+                        DPRINTF ("xfer complete, CSW\n");
                         s->mode = USB_MSDM_CSW;
                     }
                 }
@@ -422,6 +448,12 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
             } else {
                 ret = p->result;
             }
+#if defined(CONFIG_FAULT_INJECTION)
+            if (ret >=0 && fi_should_fail(s->fi_dataout_stall))
+                    ret = USB_RET_STALL;
+            else if (fi_should_fail(s->fi_dataout_crc))
+                    ret = USB_RET_CRC;
+#endif
             break;
 
         default:
@@ -484,6 +516,14 @@ static int usb_msd_handle_data(USBDevice *dev, USBPacket *p)
             } else {
                 ret = p->result;
             }
+#if defined(CONFIG_FAULT_INJECTION)
+            if (ret >=0) {
+				if (fi_should_fail(s->fi_datain_stall))
+                	ret = USB_RET_STALL;
+            	else if (fi_should_fail(s->fi_datain_crc))
+                	ret = USB_RET_CRC;
+            } 
+#endif
             break;
 
         default:
@@ -535,6 +575,34 @@ static const struct SCSIBusInfo usb_msd_scsi_info = {
     .load_request = usb_msd_load_request,
 };
 
+#if defined(CONFIG_FAULT_INJECTION)
+struct msd_fi_desc {
+    const char *name;
+    const char *desc;
+};
+static struct msd_fi_desc fi_datain_stall= {
+    .name = "msd-datain-stall",
+    .desc = "insert STALL into DATAIN packets",
+};
+static struct msd_fi_desc fi_dataout_stall = {
+    .name = "msd-dataout-stall",
+    .desc = "insert STALL into DATAOUT packets",
+};
+static struct msd_fi_desc fi_dataout_crc = {
+    .name = "msd-dataout-crc",
+    .desc = "insert CRC error into DATAOUT packets",
+};
+static struct msd_fi_desc fi_datain_crc = {
+    .name = "msd-datain-crc",
+    .desc = "insert CRC error into DATAIN packets",
+};
+static inline void install_fi(struct fi_info** fi, struct msd_fi_desc *fi_desc)
+{
+    *fi = fi_create(fi_desc->name, fi_desc->desc, 1);
+    DPRINTF ("Fault %s injected into %p\n", fi_desc->name, *fi);
+}
+#endif
+
 static int usb_msd_initfn(USBDevice *dev)
 {
     MSDState *s = DO_UPCAST(MSDState, dev, dev);
@@ -584,6 +652,13 @@ static int usb_msd_initfn(USBDevice *dev)
         }
     }
 
+#if defined(CONFIG_FAULT_INJECTION)
+    /* TODO: qobject ? */
+    install_fi(&s->fi_datain_stall, &fi_datain_stall);
+    install_fi(&s->fi_dataout_stall, &fi_dataout_stall);
+    install_fi(&s->fi_dataout_crc, &fi_dataout_crc);
+    install_fi(&s->fi_datain_crc, &fi_datain_crc);
+#endif
     return 0;
 }
 

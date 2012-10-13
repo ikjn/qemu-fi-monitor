@@ -62,17 +62,27 @@
 #ifdef CONFIG_TRACE_SIMPLE
 #include "trace/simple.h"
 #endif
+#ifdef CONFIG_TRACE_MEMORY
+#include "mtrace.h"
+#endif
 #include "ui/qemu-spice.h"
 #include "memory.h"
 #include "qmp-commands.h"
 #include "hmp.h"
 #include "qemu-thread.h"
+#if defined(CONFIG_FAULT_INJECTION)
+#include "fi.h"
+#endif
 
 /* for pic/irq_info */
 #if defined(TARGET_SPARC)
 #include "hw/sun4m.h"
 #endif
 #include "hw/lm32_pic.h"
+
+#if defined(CONFIG_FAULT_INJECTION)
+#include "fi.h"
+#endif
 
 //#define DEBUG
 //#define DEBUG_COMPLETION
@@ -738,6 +748,23 @@ static void do_trace_event_set_state(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "unknown event name \"%s\"\n", tp_name);
     }
 }
+
+#ifdef CONFIG_TRACE_MEMORY
+/* e.g., mtrace ohci-hcd on|off */
+static void do_mtrace(Monitor *mon, const QDict *qdict)
+{
+    const char *devname = qdict_get_try_str(qdict, "devname");
+    const char *ctl = qdict_get_try_str(qdict, "op");
+    int on;
+
+	if (ctl)
+		on = strcmp(ctl, "on") ? 0 : 1;
+	else
+		on = -1;
+
+    mtrace_control(devname, on);
+}
+#endif
 
 #ifdef CONFIG_TRACE_SIMPLE
 static void do_trace_file(Monitor *mon, const QDict *qdict)
@@ -2965,6 +2992,15 @@ static mon_cmd_t info_cmds[] = {
         .help       = "show available trace-events & their state",
         .mhandler.info = do_trace_print_events,
     },
+#if defined(CONFIG_FAULT_INJECTION)
+	{
+		.name		= "fi",
+		.args_type	= "",
+		.params		= "",
+		.help		= "show available fault injection scheme",
+		.mhandler.info = do_info_fi,
+	},
+#endif
     {
         .name       = NULL,
     },

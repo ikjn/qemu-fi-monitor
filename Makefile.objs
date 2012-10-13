@@ -89,6 +89,8 @@ common-obj-y += hw/
 common-obj-y += ui/
 common-obj-y += bt-host.o bt-vhci.o
 
+common-obj-$(CONFIG_FAULT_INJECTION) += fi.o
+
 common-obj-y += iov.o acl.o
 common-obj-$(CONFIG_POSIX) += compatfd.o
 common-obj-y += notify.o event_notifier.o
