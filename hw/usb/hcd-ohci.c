@@ -589,12 +589,8 @@ static inline int ohci_read_iso_td(OHCIState *ohci,
 static inline int ohci_read_hcca(OHCIState *ohci,
                                  dma_addr_t addr, struct ohci_hcca *hcca)
 {
-<<<<<<< HEAD
-    dma_memory_read(ohci->dma, addr + ohci->localmem_base, hcca, sizeof(*hcca));
-=======
 	trace_ohci_read_hcca(ohci, addr, hcca);
-    cpu_physical_memory_read(addr + ohci->localmem_base, hcca, sizeof(*hcca));
->>>>>>> 2012.05-mine
+    dma_memory_read(ohci->dma, addr + ohci->localmem_base, hcca, sizeof(*hcca));
     return 1;
 }
 
@@ -629,17 +625,11 @@ static inline int ohci_put_iso_td(OHCIState *ohci,
 static inline int ohci_put_hcca(OHCIState *ohci,
                                 dma_addr_t addr, struct ohci_hcca *hcca)
 {
-<<<<<<< HEAD
+    trace_ohci_put_hcca(ohci, addr, hcca);
     dma_memory_write(ohci->dma,
                      addr + ohci->localmem_base + HCCA_WRITEBACK_OFFSET,
                      (char *)hcca + HCCA_WRITEBACK_OFFSET,
                      HCCA_WRITEBACK_SIZE);
-=======
-    trace_ohci_put_hcca(ohci, addr, hcca);
-    cpu_physical_memory_write(addr + ohci->localmem_base + HCCA_WRITEBACK_OFFSET,
-                              (char *)hcca + HCCA_WRITEBACK_OFFSET,
-                              HCCA_WRITEBACK_SIZE);
->>>>>>> 2012.05-mine
     return 1;
 }
 
@@ -649,7 +639,7 @@ static void ohci_copy_td(OHCIState *ohci, struct ohci_td *td,
 {
     dma_addr_t ptr, n;
 
-    trace_ohci_copy_td(ohci, td, buf, len, write);
+    trace_ohci_copy_td(ohci, td, buf, len, dir);
     ptr = td->cbp;
     n = 0x1000 - (ptr & 0xfff);
     if (n > len)
@@ -669,7 +659,7 @@ static void ohci_copy_iso_td(OHCIState *ohci,
 {
     dma_addr_t ptr, n;
 
-    trace_ohci_copy_iso_td(ohci, start_addr, end_addr, buf, len, write);
+    trace_ohci_copy_iso_td(ohci, start_addr, end_addr, buf, len, dir);
     ptr = start_addr;
     n = 0x1000 - (ptr & 0xfff);
     if (n > len)
