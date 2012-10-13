@@ -775,7 +775,7 @@ static inline void gen_smc(CPUARMState *env, DisasContext *s)
     s->is_jmp = DISAS_SMC;
 }
 
-#if defined(CONFIG_TRACE_MEMORY)
+#if !defined(CONFIG_USER_ONLY) && defined(CONFIG_TRACE_MEMORY)
 #define MTRACE_HOOK_READ(ADDR, SZ) \
 do { \
 	TCGv _size = tcg_const_i32(SZ); \

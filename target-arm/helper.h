@@ -155,7 +155,7 @@ DEF_HELPER_2(shr_cc, i32, i32, i32)
 DEF_HELPER_2(sar_cc, i32, i32, i32)
 DEF_HELPER_2(ror_cc, i32, i32, i32)
 
-#if defined(CONFIG_TRACE_MEMORY)
+#if !defined(CONFIG_USER_ONLY) && defined(CONFIG_TRACE_MEMORY)
 DEF_HELPER_5(mtrace_hook, void, env, i32, i32, i32, s32)
 #endif
 

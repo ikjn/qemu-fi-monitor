@@ -2583,6 +2583,20 @@ target_phys_addr_t cpu_get_phys_page_debug(CPUARMState *env, target_ulong addr)
     return phys_addr;
 }
 
+#if !defined(CONFIG_USER_ONLY) && defined(CONFIG_TRACE_MEMORY)
+#include "mtrace.h"
+void HELPER(mtrace_hook)(CPUARMState *env, uint32_t addr,
+				uint32_t size, uint32_t ptr, int32_t write)
+{
+    target_phys_addr_t phys_addr;
+    target_ulong page_size;
+    int prot, ret;
+	ret = get_phys_addr(env, addr, 0, 0, &phys_addr, &prot, &page_size);
+	if (ret == 0)
+		mtrace_hook_access((env), phys_addr, size, write, (void*)ptr);
+}
+#endif
+
 void HELPER(set_r13_banked)(CPUARMState *env, uint32_t mode, uint32_t val)
 {
     if ((env->uncached_cpsr & CPSR_M) == mode) {
